@@ -39,7 +39,7 @@ todo --> in_progress --> qa --> done
 Install the Nightshift CLI globally:
 
 ```bash
-npm install -g @jdaskovsky/nightshift
+npm install -g @johndaskovsky/nightshift
 ```
 
 Then initialize Nightshift in your project:
