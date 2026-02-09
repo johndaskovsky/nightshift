@@ -15,12 +15,11 @@
       "cat*": "allow",
       "head*": "allow",
       "xargs*": "allow",
-      "curl*": "allow",
-      "openspec list*": "allow",
+      "curl*": "allow"
     },
 
     // Web fetch permissions
-    "webfetch": "allow",
+    "webfetch": "allow"
   },
 
   // Agent configurations
@@ -88,6 +87,6 @@
           "*": "deny"
         }
       }
-    },
-  },
+    }
+  }
 }

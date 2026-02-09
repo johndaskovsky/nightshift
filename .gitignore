@@ -1,3 +1,7 @@
 .opencode/command/opsx-*.md
 /.opencode/skills/openspec-*
 /openspec
+
+# Nightshift CLI build output
+/dist
+/node_modules
