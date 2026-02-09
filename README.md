@@ -34,6 +34,31 @@ todo --> in_progress --> qa --> done
 
 - [OpenCode](https://opencode.ai/) AI assistant
 
+## Installation
+
+Install the Nightshift CLI globally:
+
+```bash
+npm install -g @jdaskovsky/nightshift
+```
+
+Then initialize Nightshift in your project:
+
+```bash
+cd your-project
+nightshift init
+```
+
+This creates the `.nightshift/` and `.opencode/` directories, writes agent and command files, and merges the Nightshift agent block into `opencode.jsonc`.
+
+To regenerate framework files after upgrading the CLI:
+
+```bash
+nightshift update
+```
+
+`update` overwrites the agent and command files and re-merges `opencode.jsonc` while preserving your non-Nightshift configuration. It does not touch `.nightshift/` shift data.
+
 ## Quick Start
 
 All commands run inside the OpenCode assistant.
