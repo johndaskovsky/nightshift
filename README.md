@@ -33,11 +33,6 @@ todo --> in_progress --> qa --> done
 ## Prerequisites
 
 - [OpenCode](https://opencode.ai/) AI assistant
-- [Bun](https://bun.sh/) package manager
-
-```bash
-cd .opencode && bun install
-```
 
 ## Quick Start
 
@@ -49,7 +44,7 @@ All commands run inside the OpenCode assistant.
 /nightshift-create my-batch-job
 ```
 
-This scaffolds `.nightshift/my-batch-job/` with a `manager.md` and an empty `table.csv`.
+This scaffolds `.nightshift/my-batch-job/` with a `manager.md` and an empty `table.csv`. Add data to the table. The items should have all of the metadata needed to process the tasks.
 
 ### 2. Add a task
 
@@ -239,7 +234,5 @@ night-shift/
   .opencode/
     agent/              # Manager, dev, and QA agent instructions
     command/            # Slash command definitions
-    skills/             # OpenSpec workflow skills
-  openspec/             # Specifications and change tracking
 ```
 
