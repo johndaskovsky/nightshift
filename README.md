@@ -261,3 +261,7 @@ night-shift/
     command/            # Slash command definitions
 ```
 
+## License
+
+MIT
+
