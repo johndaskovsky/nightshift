@@ -1,0 +1,93 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {},
+
+  // Global permissions for tools and MCP integrations
+  "permission": {
+    // File editing permissions
+    "edit": "allow",
+
+    // Bash command permissions (pattern-based)
+    "bash": {
+      "*": "ask",
+      "mkdir*": "allow",
+      "test*": "allow",
+      "cat*": "allow",
+      "head*": "allow",
+      "xargs*": "allow",
+      "curl*": "allow",
+      "openspec list*": "allow",
+    },
+
+    // Web fetch permissions
+    "webfetch": "allow",
+  },
+
+  // Agent configurations
+  "agent": {
+    // Nightshift manager — orchestrates shift execution
+    "nightshift-manager": {
+      "description": "Orchestrate a Nightshift shift: read manager.md and table.csv, delegate items to dev and qa agents, update status",
+      "mode": "subagent",
+      "tools": {
+        "write": true,
+        "edit": true,
+        "read": true,
+        "glob": true,
+        "grep": true,
+        "task": true,
+      },
+      "permission": {
+        "bash": {
+          "*": "deny",
+        },
+        "task": {
+          "*": "deny",
+          "nightshift-dev": "allow",
+          "nightshift-qa": "allow",
+        },
+      },
+    },
+
+    // Nightshift dev — executes task steps on a single item
+    "nightshift-dev": {
+      "description": "Execute Nightshift task steps on a single table item and return structured results",
+      "mode": "subagent",
+      "tools": {
+        "write": true,
+        "edit": true,
+        "read": true,
+        "glob": true,
+        "grep": true,
+        "task": false,
+        "playwright_*": true,
+      },
+      "permission": {
+        "bash": {
+          "*": "deny",
+          "mkdir*": "allow",
+        },
+      },
+    },
+
+    // Nightshift qa — verifies task completion
+    "nightshift-qa": {
+      "description": "Verify Nightshift task completion against validation criteria and report pass/fail",
+      "mode": "subagent",
+      "tools": {
+        "write": false,
+        "edit": false,
+        "read": true,
+        "glob": true,
+        "grep": true,
+        "task": false,
+        "playwright_*": true,
+      },
+      "permission": {
+        "bash": {
+          "*": "deny",
+        },
+      },
+    },
+  },
+}
