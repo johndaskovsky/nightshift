@@ -1,6 +1,5 @@
 .opencode/command/opsx-*.md
 /.opencode/skills/openspec-*
-/openspec
 
 # Nightshift shift environment files (secrets)
 .nightshift/**/.env
