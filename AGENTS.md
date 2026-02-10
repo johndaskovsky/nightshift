@@ -5,7 +5,7 @@
 This is an AI agent orchestration framework called **Nightshift** — a batch processing system where a manager agent delegates work to dev and QA agents. The codebase contains no traditional source code; it is built entirely from Markdown, YAML, CSV, and JSONC configuration files that define agent behaviors, commands, specifications, and workflows.
 
 **Runtime:** [OpenCode](https://opencode.ai/) AI assistant with custom agents, commands, and skills.
-**Package manager:** Bun (for `.opencode/` plugin dependencies only).
+**Package manager:** pnpm.
 **Spec framework:** OpenSpec (spec-driven development workflow).
 
 ## Build / Lint / Test Commands
@@ -15,7 +15,7 @@ There is no traditional build system, test framework, or linter. All execution h
 ### Install dependencies
 
 ```bash
-cd .opencode && bun install
+pnpm install
 ```
 
 ### Shift commands (run inside OpenCode)
@@ -51,7 +51,7 @@ openspec list changes
 
 ```
 night-shift/
-├── opencode.jsonc                  # Root config: agents, permissions, MCP
+├── opencode.jsonc                  # Root config: permissions, MCP servers
 ├── .nightshift/                    # Runtime shift data
 │   ├── <shift-name>/               # Active shift directories
 │   │   ├── manager.md              # Shift config (tasks, column mapping)
@@ -134,10 +134,14 @@ Agent files additionally include `mode: subagent` and tool/permission blocks.
 
 ### JSONC formatting (opencode.jsonc)
 
+Project-level `opencode.jsonc` uses standard JSONC conventions:
+
 - 2-space indentation
 - Trailing commas allowed
 - `//` line comments for section labels (terse, descriptive)
 - Double quotes (JSON standard)
+
+Note: Nightshift does not manage or template `opencode.jsonc` for target projects. This section applies to the project's own configuration file.
 
 ### CSV conventions
 

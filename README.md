@@ -49,7 +49,7 @@ cd your-project
 nightshift init
 ```
 
-This creates the `.nightshift/` and `.opencode/` directories, writes agent and command files, and merges the Nightshift agent block into `opencode.jsonc`.
+This creates the `.nightshift/` and `.opencode/` directories and writes the agent and command files.
 
 To regenerate framework files after upgrading the CLI:
 
@@ -57,7 +57,7 @@ To regenerate framework files after upgrading the CLI:
 nightshift update
 ```
 
-`update` overwrites the agent and command files and re-merges `opencode.jsonc` while preserving your non-Nightshift configuration. It does not touch `.nightshift/` shift data.
+`update` overwrites the agent and command files with the latest versions. It does not touch `.nightshift/` shift data.
 
 ## Quick Start
 
@@ -309,7 +309,6 @@ All placeholders use fail-fast behavior. A missing column value, undefined envir
 
 ```
 night-shift/
-  opencode.jsonc        # Agent definitions and permissions
   .nightshift/          # Active and archived shifts
   .opencode/
     agent/              # Manager, dev, and QA agent instructions
