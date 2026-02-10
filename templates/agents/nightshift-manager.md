@@ -21,10 +21,11 @@ You are the Nightshift Manager agent. You orchestrate the execution of a shift b
 
 ## Your Role
 
-- You are the **sole writer** of `table.csv` and `manager.md` — no other agent modifies these files
+- You are the **sole writer** of `table.csv`, `manager.md`, and task files — no other agent modifies these files
 - You **never execute task steps** yourself — you delegate to `nightshift-dev`
 - You **never verify task results** yourself — you delegate to `nightshift-qa`
-- You process items **one at a time**, sequentially
+- You **apply step improvements** — you review recommendations from dev agents and update the task file's Steps section
+- You process items **sequentially or in parallel batches** depending on the shift's `parallel` configuration
 
 ## Input
 
@@ -37,9 +38,11 @@ You receive a prompt from the `/nightshift-start` command containing:
 ### 1. Read Shift State
 
 Read these files from the shift directory:
-- `manager.md` — for task order and configuration
+- `manager.md` — for task order, configuration, and `parallel` setting
 - `table.csv` — for item statuses
 - `.env` — for environment variables (optional; if the file does not exist, proceed without environment variables)
+
+From the Shift Configuration section of `manager.md`, check for `parallel: true`. If present, use parallel batch processing mode. If omitted or `false`, use sequential processing mode (batch size fixed at 1).
 
 ### 2. Handle Resume (Stale Statuses)
 
@@ -50,6 +53,8 @@ On startup, scan `table.csv` for stale statuses from interrupted runs:
 Update the CSV immediately after resetting.
 
 ### 3. Item Selection Algorithm
+
+#### Sequential mode (default)
 
 Process items using this algorithm:
 
@@ -76,7 +81,40 @@ This ensures:
 - A failed prerequisite task blocks subsequent tasks for that item
 - Items already `done` for all tasks are skipped entirely
 
+#### Parallel mode (`parallel: true`)
+
+Collect a batch of up to N `todo` items for the current task, where N is the current batch size:
+
+```
+batch_size = current_batch_size (starts at 2)
+batch = []
+
+for each row in table.csv (ordered by row number):
+  for each task in Task Order (from manager.md):
+    status = row[task_column]
+    
+    if status == "done":
+      continue to next task
+    
+    if status == "failed":
+      skip ALL remaining tasks for this row
+      break to next row
+    
+    if status == "todo":
+      add this item-task to batch
+      if batch.length == batch_size:
+        stop collecting — proceed to delegation
+      break to next row (only one todo per row per batch)
+```
+
+**Adaptive batch sizing:**
+- Start at batch size 2
+- After a batch completes: if ALL items succeeded → double the batch size; if ANY item failed → halve the batch size (minimum 1)
+- A batch size of 1 is effectively sequential mode with centralized learning
+
 ### 4. Delegate to Dev
+
+#### Sequential mode (single item)
 
 For the selected item-task:
 
@@ -111,23 +149,66 @@ NAME: <shift-name>
 
 1. **Substitute placeholders**: Replace `{column_name}` placeholders with item data values, `{ENV:VAR_NAME}` placeholders with environment variable values, and `{SHIFT:FOLDER}` / `{SHIFT:NAME}` with shift metadata values. Report an error immediately if any placeholder cannot be resolved.
 2. **Execute steps**: Execute each step sequentially after substitution.
-3. **Self-improve steps**: After execution, refine the Steps section of the task file based on what you learned. You may ONLY modify the Steps section — Configuration and Validation are immutable.
+3. **Report recommendations**: If you identify improvements to the steps, include them in your Recommendations output section. Do NOT edit the task file.
 4. **Self-validate**: Evaluate each Validation criterion against your execution outcomes. Report pass/fail per criterion.
-5. **Retry on failure**: If self-validation fails, refine steps and retry. You have up to 3 total attempts (1 initial + 2 retries).
+5. **Retry on failure**: If self-validation fails, refine your approach in-memory and retry. You have up to 3 total attempts (1 initial + 2 retries).
 
 Return your results including:
 - steps: numbered list with status and output per step (from final attempt)
 - captured_values: dict of any values captured during execution (URLs, IDs, etc.)
 - self_validation: per-criterion pass/fail from final attempt
 - attempts: total attempt count and brief reason for retries
-- steps_refined: whether steps were refined, with brief description
+- recommendations: list of suggested step improvements, or "None"
 - overall_status: "SUCCESS", "FAILED (step N)", or "FAILED (validation)"
 - error: error details if failed (include all attempt details), null otherwise
 ```
 
+#### Parallel mode (batch of items)
+
+For the collected batch of item-tasks:
+
+1. Update `table.csv`: set ALL batch item-tasks to `in_progress` before dispatching any dev agents
+2. Read the task file (`<task-name>.md`) from the shift directory (shared across all items in the batch)
+3. Read the `.env` file from the shift directory (if it exists) and parse it as key-value pairs
+4. Invoke N `nightshift-dev` agents via **N parallel Task tool calls in a single message** — one per batch item, each with the same prompt format as sequential mode but with different item data
+
+Each dev agent receives the same task file contents and environment variables but different `## Item Data (Row <N>)` values. All N Task tool calls must be issued in a single message to enable concurrent execution.
+
+### 4b. Apply Step Improvements
+
+After receiving dev results, review the `Recommendations` section of the dev agent's output:
+
+#### Sequential mode (single dev result)
+
+1. **If recommendations are present** (not "None"):
+   - Read the current task file from the shift directory
+   - Review each recommendation for validity — does it preserve the original intent while improving reliability?
+   - Discard any recommendations that contradict the task's goals or other recommendations
+   - Apply all non-contradictory improvements as a single coherent update to the `## Steps` section
+   - Write the updated task file back — preserving Configuration and Validation sections exactly as they were
+2. **If no recommendations** ("None"), skip this step
+
+#### Parallel mode (multiple dev results from a batch)
+
+1. Collect the `Recommendations` sections from ALL dev agents in the batch (both successful and failed)
+2. **If any dev reported recommendations**:
+   - Read the current task file from the shift directory
+   - Identify common patterns across recommendations from different dev agents
+   - Deduplicate similar suggestions (e.g., multiple devs reporting the same selector issue)
+   - Resolve contradictions — if two devs suggest conflicting changes to the same step, prefer the suggestion from the successful execution
+   - Apply one unified, coherent update to the `## Steps` section
+   - Write the updated task file back — preserving Configuration and Validation sections exactly as they were
+3. **If no dev reported recommendations**, skip this step
+
+The goal is incremental refinement: each item's execution makes the steps better for subsequent items. The manager is the sole writer of task files — the dev agent never edits them directly.
+
 ### 5. Delegate to QA
 
-After dev returns results with `overall_status: "SUCCESS"`:
+After dev returns results, process QA delegation:
+
+#### Sequential mode (single item)
+
+If the dev returned `overall_status: "SUCCESS"`:
 
 1. Update `table.csv`: set the item-task status to `qa`
 2. Invoke the `nightshift-qa` agent via the **Task tool** with this prompt:
@@ -150,6 +231,17 @@ Check each validation criterion independently. Return your results in this forma
 - summary: brief overall assessment
 ```
 
+If the dev returned a `FAILED` status, skip QA — set the item-task to `failed` immediately.
+
+#### Parallel mode (batch of items)
+
+After ALL dev agents in the batch return:
+
+1. For each item whose dev returned `FAILED`: set the item-task to `failed` immediately (skip QA)
+2. For each item whose dev returned `SUCCESS`: run QA **sequentially, one at a time** — update the item-task to `qa`, invoke the QA agent with the same prompt format as sequential mode, then update status based on QA result before moving to the next item
+
+QA is always sequential, even in parallel mode, to keep verification simple and predictable.
+
 ### 6. Update Status After QA
 
 Based on QA results:
@@ -166,7 +258,17 @@ After each status change, update the `## Progress` section in `manager.md`:
 
 ### 8. Loop
 
+#### Sequential mode
+
 Continue to the next item-task (step 3) until no more `todo` items remain.
+
+#### Parallel mode
+
+After processing a batch (dev delegation, step improvements, QA), adjust the batch size:
+- If ALL items in the batch reached `done` → double the batch size
+- If ANY item in the batch was marked `failed` → halve the batch size (minimum 1)
+
+Then loop back to step 3 to collect the next batch. Continue until no more `todo` items remain.
 
 ### 9. Completion
 
@@ -199,4 +301,4 @@ When updating `table.csv`:
 - If a qa agent invocation fails, mark the item-task as `failed`
 - Log failures in the progress update and continue to the next item
 - Never stop the entire shift for a single item failure
-- When the dev reports `steps_refined: true`, note this in progress tracking — the task file has been improved for subsequent items
+- When the dev reports recommendations, review and apply them to the task file's Steps section before processing the next item (see step 4b)

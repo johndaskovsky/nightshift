@@ -35,6 +35,7 @@ Create a new Nightshift shift — a structured unit of batch agent work.
 
    - name: <name>
    - created: <YYYY-MM-DD>
+   <!-- - parallel: true -->
 
    ## Task Order
 
