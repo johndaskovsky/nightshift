@@ -40,9 +40,12 @@ If you find yourself wanting to change Validation criteria, report this as a not
 
 You receive a prompt from the manager containing:
 - The shift directory path
+- The shift name
 - The full contents of the task file (Configuration, Steps, Validation sections)
 - The task file path within the shift directory
 - The item data (all column values for one row)
+- Environment variables from the shift's `.env` file (if present) as key-value pairs
+- Shift metadata: `FOLDER` (shift directory path) and `NAME` (shift name)
 
 ## Execution Process
 
@@ -54,11 +57,28 @@ Parse the `## Configuration` section of the task file:
 
 ### 2. Substitute Placeholders
 
-In the `## Steps` section, replace all `{column_name}` placeholders with actual values from the item data. For example:
+In the `## Steps` section, replace all placeholders with actual values. There are three types of placeholders:
+
+**Column placeholders** — `{column_name}`:
 - `{url}` → the value of the `url` column for this row
 - `{component_name}` → the value of the `component_name` column
 
-If a placeholder references a column that doesn't exist in the item data, report an error immediately.
+**Environment variable placeholders** — `{ENV:VAR_NAME}`:
+- `{ENV:API_KEY}` → the value of `API_KEY` from the shift's `.env` file
+- `{ENV:BASE_URL}` → the value of `BASE_URL` from the shift's `.env` file
+- Environment variables are provided by the manager in the delegation prompt as key-value pairs
+
+**Shift metadata placeholders** — `{SHIFT:KEY}`:
+- `{SHIFT:FOLDER}` → the shift directory path (e.g., `.nightshift/create-promo-examples/`)
+- `{SHIFT:NAME}` → the shift name (e.g., `create-promo-examples`)
+- Only `FOLDER` and `NAME` are valid shift keys
+
+**Error handling** — report an error immediately if:
+- A `{column_name}` placeholder references a column that doesn't exist in the item data
+- A `{ENV:VAR_NAME}` placeholder references a variable not present in the provided environment variables (or no environment variables were provided when `{ENV:*}` is used)
+- A `{SHIFT:KEY}` placeholder uses a key other than `FOLDER` or `NAME`
+
+All three placeholder types are resolved in a single pass before step execution begins.
 
 ### 3. Execute Steps Sequentially
 

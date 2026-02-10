@@ -76,6 +76,16 @@ Create a new Nightshift shift — a structured unit of batch agent work.
 - `/nightshift-add-task <name>` — add tasks to the shift
 - `/nightshift-update-table <name>` — add items to the table
 - `/nightshift-start <name>` — begin execution (after adding tasks and items)
+
+### Environment Variables (Optional)
+Create `.nightshift/<name>/.env` to define environment variables for this shift.
+Use `{ENV:VAR_NAME}` in task steps to reference them. The `.env` file is gitignored.
+
+Available template variables in task steps:
+- `{column_name}` — table row column value
+- `{ENV:VAR_NAME}` — environment variable from `.env`
+- `{SHIFT:FOLDER}` — shift directory path
+- `{SHIFT:NAME}` — shift name
 ```
 
 **Guardrails**

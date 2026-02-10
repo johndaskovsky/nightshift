@@ -86,10 +86,11 @@ The command asks you to describe what the agent should do, what tools it needs, 
 
 ## Steps
 
-1. Navigate to {url}
+1. Navigate to {ENV:BASE_URL}{path}
 2. Click the "Add Page" button
 3. Fill in the title field with {page_title}
 4. Click "Publish"
+5. Save a screenshot to {SHIFT:FOLDER}screenshots/
 
 ## Validation
 
@@ -97,7 +98,13 @@ The command asks you to describe what the agent should do, what tools it needs, 
 - Page title matches {page_title}
 ```
 
-Steps use `{column_name}` placeholders that get substituted with each row's data at execution time.
+Steps use template variables that get substituted before execution. Three types are supported:
+
+- `{column_name}` -- row data from `table.csv` (e.g., `{url}`, `{page_title}`)
+- `{ENV:VAR_NAME}` -- values from the shift's `.env` file (e.g., `{ENV:BASE_URL}`, `{ENV:API_KEY}`)
+- `{SHIFT:FOLDER}` / `{SHIFT:NAME}` -- shift metadata (directory path and shift name)
+
+See [Template Variables](#template-variables) for details.
 
 ### 3. Add items to the table
 
@@ -160,6 +167,7 @@ All commands accept a shift name as an argument, or prompt interactively if omit
   my-batch-job/
     manager.md          # Shift config: name, task order, progress counters
     table.csv           # Items and their per-task statuses
+    .env                # Optional: environment variables for this shift (gitignored)
     create-page.md      # Task definition (Configuration, Steps, Validation)
     update-cms.md       # Another task definition
   archive/
@@ -209,7 +217,7 @@ Each task has three sections. Only the Steps section is modified during executio
 | Section | Purpose | Mutable by Dev |
 |---------|---------|----------------|
 | Configuration | Declares tools and optional model | No |
-| Steps | Numbered instructions with `{placeholder}` substitution | Yes |
+| Steps | Numbered instructions with template variable substitution | Yes |
 | Validation | Independently verifiable success criteria | No |
 
 ## Execution Details
@@ -222,7 +230,7 @@ The manager iterates rows in order, tasks in the order listed in `manager.md`. T
 
 The dev agent gets up to 3 attempts per item (1 initial + 2 retries). On each attempt it:
 
-1. Substitutes `{placeholder}` values from the current row
+1. Substitutes all template variables from the current row, environment, and shift metadata
 2. Executes steps sequentially, stopping on failure
 3. Refines the Steps section based on what it learned
 4. Self-validates against the Validation criteria
@@ -241,6 +249,53 @@ If a shift is interrupted, `/nightshift-start` picks up where it left off. The m
 ### Graceful degradation
 
 A single item failure never stops the entire shift. The manager marks the failed item and moves on to the next one.
+
+## Template Variables
+
+Task steps support three types of placeholders, all resolved in a single pass before execution begins.
+
+### Column placeholders: `{column_name}`
+
+Reference any metadata column from `table.csv`. The column name must match a header in the table exactly.
+
+```markdown
+1. Navigate to {url}
+2. Fill in the title with {page_title}
+```
+
+### Environment placeholders: `{ENV:VAR_NAME}`
+
+Reference values from an optional `.env` file in the shift directory (`.nightshift/<shift-name>/.env`). Useful for credentials, API keys, and base URLs that should not be committed to version control.
+
+```markdown
+1. Authenticate with API key {ENV:API_KEY}
+2. POST to {ENV:BASE_URL}/api/pages
+```
+
+The `.env` file uses standard dotenv format:
+
+```
+# Shift environment variables
+BASE_URL=https://example.com
+API_KEY=sk-1234-abcd
+```
+
+Shift `.env` files are gitignored via the `.nightshift/**/.env` pattern.
+
+### Shift placeholders: `{SHIFT:FOLDER}` / `{SHIFT:NAME}`
+
+Reference shift-level metadata. Two variables are available:
+
+- `{SHIFT:FOLDER}` -- the shift directory path (e.g., `.nightshift/my-batch-job/`)
+- `{SHIFT:NAME}` -- the shift name (e.g., `my-batch-job`)
+
+```markdown
+1. Save the output to {SHIFT:FOLDER}output/{row}.json
+```
+
+### Error handling
+
+All placeholders use fail-fast behavior. A missing column value, undefined environment variable, or unrecognized shift variable causes the dev agent to report an error immediately rather than proceeding with an unresolved placeholder.
 
 ## Agent Permissions
 
