@@ -39,6 +39,7 @@ You receive a prompt from the `/nightshift-start` command containing:
 Read these files from the shift directory:
 - `manager.md` — for task order and configuration
 - `table.csv` — for item statuses
+- `.env` — for environment variables (optional; if the file does not exist, proceed without environment variables)
 
 ### 2. Handle Resume (Stale Statuses)
 
@@ -81,7 +82,8 @@ For the selected item-task:
 
 1. Update `table.csv`: set the item-task status to `in_progress`
 2. Read the task file (`<task-name>.md`) from the shift directory
-3. Invoke the `nightshift-dev` agent via the **Task tool** with this prompt:
+3. Read the `.env` file from the shift directory (if it exists) and parse it as key-value pairs (one `KEY=VALUE` per line, `#` lines are comments, blank lines ignored)
+4. Invoke the `nightshift-dev` agent via the **Task tool** with this prompt:
 
 ```
 You are executing Nightshift task "<task-name>" on a single item.
@@ -98,12 +100,20 @@ You are executing Nightshift task "<task-name>" on a single item.
 ## Item Data (Row <N>)
 <all column values for this row as key: value pairs>
 
+## Environment Variables
+<key: value pairs from .env file, or "(none)" if no .env file exists>
+
+## Shift Metadata
+FOLDER: <shift-directory-path>
+NAME: <shift-name>
+
 ## Your Responsibilities
 
-1. **Execute steps**: Substitute {column_name} placeholders with item data values and execute each step sequentially.
-2. **Self-improve steps**: After execution, refine the Steps section of the task file based on what you learned. You may ONLY modify the Steps section — Configuration and Validation are immutable.
-3. **Self-validate**: Evaluate each Validation criterion against your execution outcomes. Report pass/fail per criterion.
-4. **Retry on failure**: If self-validation fails, refine steps and retry. You have up to 3 total attempts (1 initial + 2 retries).
+1. **Substitute placeholders**: Replace `{column_name}` placeholders with item data values, `{ENV:VAR_NAME}` placeholders with environment variable values, and `{SHIFT:FOLDER}` / `{SHIFT:NAME}` with shift metadata values. Report an error immediately if any placeholder cannot be resolved.
+2. **Execute steps**: Execute each step sequentially after substitution.
+3. **Self-improve steps**: After execution, refine the Steps section of the task file based on what you learned. You may ONLY modify the Steps section — Configuration and Validation are immutable.
+4. **Self-validate**: Evaluate each Validation criterion against your execution outcomes. Report pass/fail per criterion.
+5. **Retry on failure**: If self-validation fails, refine steps and retry. You have up to 3 total attempts (1 initial + 2 retries).
 
 Return your results including:
 - steps: numbered list with status and output per step (from final attempt)
