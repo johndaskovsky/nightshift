@@ -6,7 +6,6 @@ import {
   writeAgentFiles,
   writeCommandFiles,
 } from "../../core/scaffolder.js";
-import { mergeOpencodeConfig } from "../../core/config-merger.js";
 
 interface UpdateOptions {
   yes?: boolean;
@@ -62,18 +61,6 @@ export function createUpdateCommand(): Command {
       } catch (err) {
         cmdSpinner.fail("Failed to update command files");
         warnings.push(`Command files: ${err instanceof Error ? err.message : String(err)}`);
-        hasError = true;
-      }
-
-      // Re-merge opencode.jsonc
-      const configSpinner = ora("Updating opencode.jsonc...").start();
-      try {
-        const result = mergeOpencodeConfig(targetDir);
-        configSpinner.succeed(`opencode.jsonc ${result.action}`);
-        actions.push({ path: result.path, action: result.action });
-      } catch (err) {
-        configSpinner.fail("Failed to update opencode.jsonc");
-        warnings.push(`Config merge: ${err instanceof Error ? err.message : String(err)}`);
         hasError = true;
       }
 

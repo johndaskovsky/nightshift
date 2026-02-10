@@ -6,7 +6,6 @@ import {
   writeAgentFiles,
   writeCommandFiles,
 } from "../../core/scaffolder.js";
-import { mergeOpencodeConfig } from "../../core/config-merger.js";
 
 interface InitOptions {
   force?: boolean;
@@ -65,18 +64,6 @@ export function createInitCommand(): Command {
       } catch (err) {
         cmdSpinner.fail("Failed to write command files");
         warnings.push(`Command files: ${err instanceof Error ? err.message : String(err)}`);
-        hasError = true;
-      }
-
-      // Step 4: Merge opencode.jsonc
-      const configSpinner = ora("Configuring opencode.jsonc...").start();
-      try {
-        const result = mergeOpencodeConfig(targetDir);
-        configSpinner.succeed(`opencode.jsonc ${result.action}`);
-        actions.push({ path: result.path, action: result.action });
-      } catch (err) {
-        configSpinner.fail("Failed to configure opencode.jsonc");
-        warnings.push(`Config merge: ${err instanceof Error ? err.message : String(err)}`);
         hasError = true;
       }
 
