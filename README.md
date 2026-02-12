@@ -33,6 +33,7 @@ todo --> in_progress --> qa --> done
 ## Prerequisites
 
 - [OpenCode](https://opencode.ai/) AI assistant
+- [qsv](https://github.com/dathere/qsv) CSV toolkit (optional but strongly recommended) -- install via `brew install qsv` or download from [GitHub releases](https://github.com/dathere/qsv/releases) for non-Homebrew platforms
 
 ## Installation
 

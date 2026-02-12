@@ -16,18 +16,20 @@ Execute a single task on one item for testing purposes — without modifying the
 
 2. **Select the task**
 
-   List task files (`.md` files excluding `manager.md`) in the shift directory.
+   List task columns using `qsv headers --just-names table.csv` and exclude non-task columns (`row` and metadata columns — task columns are those with status values like `todo`, `done`, `failed`). Alternatively, list `.md` files excluding `manager.md` in the shift directory.
    - If one task exists, auto-select it
    - If multiple tasks exist, use the **AskUserQuestion tool** to let the user pick
 
 3. **Select the row**
 
-   Read `table.csv` and show available rows. Use the **AskUserQuestion tool** to ask:
-   > "Which row do you want to test? Enter a row number."
+   Determine the valid row range using `qsv count table.csv`. Use the **AskUserQuestion tool** to ask:
+   > "Which row do you want to test? Enter a row number (1-N)."
 
-   Show a preview of the row's metadata columns to help them choose.
+   Show a preview of the row's metadata using `qsv slice --index <qsv_index> table.csv` (where `qsv_index = row_number - 1`) to help them choose.
 
 4. **Execute the task (dev agent)**
+
+   Extract the row data using `qsv slice --index <qsv_index> table.csv` and specific columns with `qsv select` as needed.
 
    Use the **Task tool** to invoke the `nightshift-dev` subagent with:
    ```

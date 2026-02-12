@@ -22,17 +22,30 @@ Move a completed (or partially completed) shift to the archive directory with a 
 
 3. **Check for incomplete items**
 
-   Read `table.csv` and check for items NOT in `done` status:
-   - If incomplete items exist, warn:
-     ```
-     Warning: Shift has incomplete items:
-     - X items with status "todo"
-     - Y items with status "failed"
-     - Z items with status "in_progress"
-     ```
-     Use the **AskUserQuestion tool** to confirm:
-     > "Archive anyway?"
-     Options: "Yes, archive with incomplete items" / "No, cancel"
+   Use `qsv` to check for items NOT in `done` status. For each task column (identified via `qsv headers --just-names table.csv`):
+
+   ```bash
+   qsv search --exact done --select <task-column> --invert-match table.csv | qsv count
+   ```
+
+   If any non-done items exist, break down the counts by status:
+
+   ```bash
+   qsv search --exact todo --select <task-column> table.csv | qsv count
+   qsv search --exact failed --select <task-column> table.csv | qsv count
+   qsv search --exact in_progress --select <task-column> table.csv | qsv count
+   ```
+
+   Warn the user:
+   ```
+   Warning: Shift has incomplete items:
+   - X items with status "todo"
+   - Y items with status "failed"
+   - Z items with status "in_progress"
+   ```
+   Use the **AskUserQuestion tool** to confirm:
+   > "Archive anyway?"
+   Options: "Yes, archive with incomplete items" / "No, cancel"
 
    - If user cancels, STOP
 

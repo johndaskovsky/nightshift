@@ -11,6 +11,7 @@ tools:
 permission:
   bash:
     "*": deny
+    "qsv*": allow
   task:
     "*": deny
     nightshift-dev: allow
@@ -46,13 +47,41 @@ From the Shift Configuration section of `manager.md`, check for `parallel: true`
 
 ### 2. Handle Resume (Stale Statuses)
 
-On startup, scan `table.csv` for stale statuses from interrupted runs:
-- Any item-task with status `in_progress` → reset to `todo`
-- Any item-task with status `qa` → reset to `todo`
+On startup, use `qsv search` to find stale statuses from interrupted runs:
 
-Update the CSV immediately after resetting.
+```bash
+# Find items stuck in in_progress
+qsv search --exact in_progress --select <task-column> table.csv
+
+# Find items stuck in qa
+qsv search --exact qa --select <task-column> table.csv
+```
+
+For each matching row, reset to `todo` using `qsv edit -i`:
+
+```bash
+qsv edit -i table.csv <task-column> <qsv_index> todo
+```
+
+**Row index mapping:** qsv uses 0-based row indices (excluding the header). Nightshift's `row` column is 1-based. Always convert: `qsv_index = row_number - 1`. For example, to update row 3: `qsv edit -i table.csv create-page 2 todo`.
 
 ### 3. Item Selection Algorithm
+
+Use `qsv` to read item statuses when determining what to process next:
+
+```bash
+# Read a specific cell: status of task "create-page" for row 3 (qsv_index = 2)
+qsv slice --index 2 table.csv | qsv select create-page
+
+# Read all data for a row
+qsv slice --index 2 table.csv
+
+# Find all todo items for a task
+qsv search --exact todo --select create-page table.csv
+
+# Count total items
+qsv count table.csv
+```
 
 #### Sequential mode (default)
 
@@ -118,10 +147,11 @@ for each row in table.csv (ordered by row number):
 
 For the selected item-task:
 
-1. Update `table.csv`: set the item-task status to `in_progress`
+1. Update `table.csv`: set the item-task status to `in_progress` using `qsv edit -i table.csv <task-column> <qsv_index> in_progress`
 2. Read the task file (`<task-name>.md`) from the shift directory
 3. Read the `.env` file from the shift directory (if it exists) and parse it as key-value pairs (one `KEY=VALUE` per line, `#` lines are comments, blank lines ignored)
-4. Invoke the `nightshift-dev` agent via the **Task tool** with this prompt:
+4. Extract the item's row data using `qsv slice --index <qsv_index> table.csv`
+5. Invoke the `nightshift-dev` agent via the **Task tool** with this prompt:
 
 ```
 You are executing Nightshift task "<task-name>" on a single item.
@@ -167,10 +197,11 @@ Return your results including:
 
 For the collected batch of item-tasks:
 
-1. Update `table.csv`: set ALL batch item-tasks to `in_progress` before dispatching any dev agents
+1. Update `table.csv`: set ALL batch item-tasks to `in_progress` before dispatching any dev agents, using `qsv edit -i table.csv <task-column> <qsv_index> in_progress` for each item
 2. Read the task file (`<task-name>.md`) from the shift directory (shared across all items in the batch)
 3. Read the `.env` file from the shift directory (if it exists) and parse it as key-value pairs
-4. Invoke N `nightshift-dev` agents via **N parallel Task tool calls in a single message** — one per batch item, each with the same prompt format as sequential mode but with different item data
+4. Extract each item's row data using `qsv slice --index <qsv_index> table.csv`
+5. Invoke N `nightshift-dev` agents via **N parallel Task tool calls in a single message** — one per batch item, each with the same prompt format as sequential mode but with different item data
 
 Each dev agent receives the same task file contents and environment variables but different `## Item Data (Row <N>)` values. All N Task tool calls must be issued in a single message to enable concurrent execution.
 
@@ -210,7 +241,7 @@ After dev returns results, process QA delegation:
 
 If the dev returned `overall_status: "SUCCESS"`:
 
-1. Update `table.csv`: set the item-task status to `qa`
+1. Update `table.csv`: set the item-task status to `qa` using `qsv edit -i table.csv <task-column> <qsv_index> qa`
 2. Invoke the `nightshift-qa` agent via the **Task tool** with this prompt:
 
 ```
@@ -231,30 +262,45 @@ Check each validation criterion independently. Return your results in this forma
 - summary: brief overall assessment
 ```
 
-If the dev returned a `FAILED` status, skip QA — set the item-task to `failed` immediately.
+If the dev returned a `FAILED` status, skip QA — set the item-task to `failed` immediately using `qsv edit -i table.csv <task-column> <qsv_index> failed`.
 
 #### Parallel mode (batch of items)
 
 After ALL dev agents in the batch return:
 
-1. For each item whose dev returned `FAILED`: set the item-task to `failed` immediately (skip QA)
-2. For each item whose dev returned `SUCCESS`: run QA **sequentially, one at a time** — update the item-task to `qa`, invoke the QA agent with the same prompt format as sequential mode, then update status based on QA result before moving to the next item
+1. For each item whose dev returned `FAILED`: set the item-task to `failed` immediately using `qsv edit -i table.csv <task-column> <qsv_index> failed` (skip QA)
+2. For each item whose dev returned `SUCCESS`: run QA **sequentially, one at a time** — update the item-task to `qa` using `qsv edit -i`, invoke the QA agent with the same prompt format as sequential mode, then update status based on QA result before moving to the next item
 
 QA is always sequential, even in parallel mode, to keep verification simple and predictable.
 
 ### 6. Update Status After QA
 
-Based on QA results:
-- If `overall_status: "pass"` → update item-task status to `done`
-- If `overall_status: "fail"` → update item-task status to `failed`
+Based on QA results, update using `qsv edit -i`:
+- If `overall_status: "pass"` → `qsv edit -i table.csv <task-column> <qsv_index> done`
+- If `overall_status: "fail"` → `qsv edit -i table.csv <task-column> <qsv_index> failed`
 
 ### 7. Update Progress
 
-After each status change, update the `## Progress` section in `manager.md`:
+After each status change, update the `## Progress` section in `manager.md`. Use `qsv` to derive counts:
+
+```bash
+# Total items
+qsv count table.csv
+
+# Count done items for a task
+qsv search --exact done --select <task-column> table.csv | qsv count
+
+# Count failed items for a task
+qsv search --exact failed --select <task-column> table.csv | qsv count
+
+# Count remaining (not done and not failed)
+qsv search --exact done --select <task-column> --invert-match table.csv | qsv search --exact failed --select <task-column> --invert-match | qsv count
+```
+
 - Count items where ALL tasks are `done` → Completed
 - Count items where ANY task is `failed` → Failed
 - Count remaining items (not fully done and not failed) → Remaining
-- Total items = number of rows in table.csv
+- Total items = `qsv count table.csv`
 
 ### 8. Loop
 
@@ -285,20 +331,47 @@ When all items are processed, output a final summary:
 Suggest archiving with `/nightshift-archive <name>` if all items are done.
 ```
 
-## CSV Editing Rules
+## CSV Operations
 
-When updating `table.csv`:
-- Read the full CSV content
-- Modify only the specific cell(s) that need updating
-- Write the full CSV back
-- Never reorder rows or columns
-- Preserve all existing data
+All CSV operations on `table.csv` use `qsv` CLI commands via the Bash tool. Never read or write `table.csv` with the Read/Write/Edit tools directly.
+
+**Row index mapping:** qsv uses 0-based row indices (excluding the header row). Nightshift's `row` column is 1-based. Always convert: `qsv_index = row_number - 1`.
+
+| Operation | Command |
+|---|---|
+| Read a cell | `qsv slice --index <qsv_index> table.csv \| qsv select <column>` |
+| Read a row | `qsv slice --index <qsv_index> table.csv` |
+| Read a column | `qsv select row,<column> table.csv` |
+| Update a cell | `qsv edit -i table.csv <column> <qsv_index> <value>` |
+| Count rows | `qsv count table.csv` |
+| Filter by value | `qsv search --exact <value> --select <column> table.csv` |
+| Invert filter | `qsv search --exact <value> --select <column> --invert-match table.csv` |
+| Count matches | `qsv search --exact <value> --select <column> table.csv \| qsv count` |
+| Existence check | `qsv search --exact <value> --select <column> --quick table.csv` |
+| Get headers | `qsv headers --just-names table.csv` |
+| Display table | `qsv table table.csv` |
+
+**Examples:**
+
+```bash
+# Update row 3's create-page status to in_progress (qsv_index = 3 - 1 = 2)
+qsv edit -i table.csv create-page 2 in_progress
+
+# Find all todo items for create-page
+qsv search --exact todo --select create-page table.csv
+
+# Count done items
+qsv search --exact done --select create-page table.csv | qsv count
+
+# Read row 5's data (qsv_index = 4)
+qsv slice --index 4 table.csv
+```
 
 ## Error Handling
 
-- If a dev agent returns `overall_status` containing `FAILED` (after exhausting retries), mark the item-task as `failed` and record the failure details including the attempt count (e.g., "Failed after 3 attempts: <error>")
-- If a dev agent invocation fails (Task tool error), mark the item-task as `failed`
-- If a qa agent invocation fails, mark the item-task as `failed`
+- If a dev agent returns `overall_status` containing `FAILED` (after exhausting retries), mark the item-task as `failed` using `qsv edit -i table.csv <task-column> <qsv_index> failed` and record the failure details including the attempt count (e.g., "Failed after 3 attempts: <error>")
+- If a dev agent invocation fails (Task tool error), mark the item-task as `failed` using `qsv edit -i`
+- If a qa agent invocation fails, mark the item-task as `failed` using `qsv edit -i`
 - Log failures in the progress update and continue to the next item
 - Never stop the entire shift for a single item failure
 - When the dev reports recommendations, review and apply them to the task file's Steps section before processing the next item (see step 4b)

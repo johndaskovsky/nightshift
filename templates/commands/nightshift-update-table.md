@@ -16,10 +16,23 @@ Bulk modify the table.csv of a shift — add rows, update metadata, or reset fai
 
 2. **Show current table state**
 
-   Read and display `table.csv` summary:
-   - Number of rows
-   - Column names
-   - Status distribution per task column (how many todo, done, failed, etc.)
+   Use `qsv` to display the table summary:
+
+   ```bash
+   # Row count
+   qsv count table.csv
+
+   # Column names
+   qsv headers --just-names table.csv
+
+   # Status distribution per task column
+   qsv search --exact todo --select <task-column> table.csv | qsv count
+   qsv search --exact done --select <task-column> table.csv | qsv count
+   qsv search --exact failed --select <task-column> table.csv | qsv count
+
+   # Pretty-print
+   qsv table table.csv
+   ```
 
 3. **Determine the operation**
 
@@ -35,21 +48,36 @@ Bulk modify the table.csv of a shift — add rows, update metadata, or reset fai
 
    **Add rows:**
    - Ask user for the data (they can paste CSV, describe items, or point to a data source)
-   - Assign sequential row numbers continuing from the last row
+   - Assign sequential row numbers continuing from the last row (use `qsv count table.csv` to determine the next row number)
    - Set all task status columns to `todo` for new rows
-   - Append to table.csv
+   - Write the new rows to a temporary CSV file with matching headers
+   - Append using `qsv cat rows`:
+     ```bash
+     qsv cat rows table.csv newrows.csv > table_tmp.csv && mv table_tmp.csv table.csv
+     ```
+   - Clean up the temporary file
 
    **Update metadata:**
    - Ask which column and which rows to update
    - Show a preview of the changes
    - Confirm before applying
-   - Update the specified cells while preserving all status columns
+   - Update cells using `qsv edit -i` (remember `qsv_index = row_number - 1`):
+     ```bash
+     qsv edit -i table.csv <column> <qsv_index> <new_value>
+     ```
 
    **Reset failed items:**
    - Ask which task column to reset (or all tasks)
+   - Find failed items using `qsv search`:
+     ```bash
+     qsv search --exact failed --select <task-column> table.csv
+     ```
    - Show how many items will be reset
    - Confirm before applying
-   - Change `failed` → `todo` for the specified task column(s)
+   - Reset each failed item to `todo` using `qsv edit -i`:
+     ```bash
+     qsv edit -i table.csv <task-column> <qsv_index> todo
+     ```
 
 5. **Confirm destructive changes**
 

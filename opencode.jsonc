@@ -16,7 +16,8 @@
       "head*": "allow",
       "xargs*": "allow",
       "curl*": "allow",
-      "openspec list*": "allow",
+      "openspec*": "allow",
+      "qsv*": "allow",
     },
 
     // Web fetch permissions
