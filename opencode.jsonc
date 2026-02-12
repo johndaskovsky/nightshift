@@ -18,6 +18,7 @@
       "curl*": "allow",
       "openspec*": "allow",
       "qsv*": "allow",
+      "opencode*": "allow",
     },
 
     // Web fetch permissions
