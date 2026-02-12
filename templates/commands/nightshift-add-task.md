@@ -22,7 +22,7 @@ Add a new task file to a shift and update the table with a corresponding status 
    > "Describe this task. What should the agent do for each item? Include the tools needed, step-by-step instructions, and how to verify success."
 
    From their description, derive:
-   - A kebab-case task name
+   - A snake_case task name (e.g., `create_page`, `update_spreadsheet`)
    - The Configuration section (tools list)
    - The Steps section (numbered instructions)
    - The Validation section (verification criteria)
@@ -95,5 +95,5 @@ Add a new task file to a shift and update the table with a corresponding status 
 - Always create all three sections (Configuration, Steps, Validation)
 - Initialize all existing table rows with `todo` for the new task column
 - Update manager.md task order to include the new task
-- Validate kebab-case task naming
+- Validate snake_case task naming (no hyphens — hyphens break qsv column selectors)
 - Never overwrite an existing task file

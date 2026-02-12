@@ -16,15 +16,27 @@ The manager agent SHALL support a parallel dispatch mode in which multiple table
 - **THEN** it SHALL issue N parallel Task tool calls in a single message, one per row, each invoking the nightshift-dev agent
 
 ### Requirement: Adaptive batch sizing
-The manager agent SHALL determine batch size adaptively when parallel mode is enabled. The initial batch size SHALL be 2. The manager SHALL increase batch size on success and decrease on failure.
+The manager agent SHALL determine batch size adaptively when parallel mode is enabled. The initial batch size SHALL be determined by the `current-batch-size` field in the Shift Configuration section of `manager.md`; if omitted, the default SHALL be 2. The manager SHALL increase batch size on success and decrease on failure. The batch size SHALL NOT exceed the value of `max-batch-size` if that field is present.
 
-#### Scenario: Initial batch size
-- **WHEN** parallel mode is enabled and the first batch is dispatched
-- **THEN** the batch size SHALL be 2
+#### Scenario: Initial batch size from configuration
+- **WHEN** parallel mode is enabled and `current-batch-size: 5` is set in the Shift Configuration section
+- **THEN** the first batch dispatched SHALL have a batch size of 5
+
+#### Scenario: Initial batch size default
+- **WHEN** parallel mode is enabled and `current-batch-size` is omitted from the Shift Configuration section
+- **THEN** the first batch dispatched SHALL have a batch size of 2
 
 #### Scenario: Batch size increases on full success
 - **WHEN** all items in a completed batch have status `done` after QA
 - **THEN** the manager SHALL double the batch size for the next batch
+
+#### Scenario: Batch size capped by max-batch-size on increase
+- **WHEN** all items in a completed batch have status `done` after QA and doubling the batch size would exceed `max-batch-size`
+- **THEN** the manager SHALL set the batch size to `max-batch-size` for the next batch
+
+#### Scenario: Batch size increases without cap
+- **WHEN** all items in a completed batch have status `done` after QA and `max-batch-size` is omitted
+- **THEN** the manager SHALL double the batch size for the next batch with no upper bound
 
 #### Scenario: Batch size decreases on any failure
 - **WHEN** one or more items in a completed batch have status `failed` (after dev or QA)
@@ -38,8 +50,28 @@ The manager agent SHALL determine batch size adaptively when parallel mode is en
 - **WHEN** the number of remaining `todo` items is less than the current batch size
 - **THEN** the manager SHALL dispatch only the remaining items as the final batch
 
+#### Scenario: Manager persists batch size after adjustment
+- **WHEN** the manager adjusts the batch size after a completed batch
+- **THEN** the manager SHALL write the new batch size to the `current-batch-size` field in the Shift Configuration section of `manager.md`
+
+#### Scenario: Resume uses persisted batch size
+- **WHEN** a shift is resumed and `current-batch-size: 8` is set in `manager.md`
+- **THEN** the manager SHALL use 8 as the batch size for the next batch
+
+#### Scenario: Invalid current-batch-size value
+- **WHEN** `current-batch-size` is set to a non-positive integer or non-numeric value
+- **THEN** the manager SHALL treat it as omitted and use the default of 2
+
+#### Scenario: Invalid max-batch-size value
+- **WHEN** `max-batch-size` is set to a non-positive integer or non-numeric value
+- **THEN** the manager SHALL treat it as omitted (no cap)
+
+#### Scenario: Batch size fields ignored without parallel
+- **WHEN** `parallel` is omitted or `false` and `current-batch-size` or `max-batch-size` are present in the Shift Configuration section
+- **THEN** the manager SHALL ignore both fields and process rows sequentially (batch size of 1)
+
 ### Requirement: Batch lifecycle
-The manager agent SHALL follow a defined lifecycle for each batch: dispatch all dev agents, wait for all to complete, collect and apply learnings, run QA sequentially on successful items, then proceed to the next batch.
+The manager agent SHALL follow a defined lifecycle for each batch: dispatch all dev agents, wait for all to complete, collect and apply learnings, run QA on successful items (concurrently in parallel mode), then proceed to the next batch.
 
 #### Scenario: Batch dispatch phase
 - **WHEN** the manager begins a new batch
@@ -53,9 +85,9 @@ The manager agent SHALL follow a defined lifecycle for each batch: dispatch all 
 - **WHEN** the manager has collected results from a completed batch
 - **THEN** it SHALL review all dev agent recommendations, synthesize non-contradictory improvements, and apply a single coherent update to the task file's Steps section before dispatching the next batch
 
-#### Scenario: QA runs sequentially after batch
+#### Scenario: QA runs concurrently after batch
 - **WHEN** dev agents in a batch return successful results
-- **THEN** the manager SHALL run QA sequentially on each successful item (one at a time), updating statuses to `done` or `failed` after each QA result
+- **THEN** the manager SHALL set all successful items to `qa` status and dispatch QA agents for all successful items concurrently via parallel Task tool calls in a single message, then update each item's status to `done` or `failed` based on QA results
 
 #### Scenario: Failed dev items skip QA
 - **WHEN** a dev agent in a batch returns a failure result
@@ -80,9 +112,9 @@ The system SHALL only parallelize across rows for a single task. Different tasks
 - **THEN** the manager SHALL dispatch multiple rows concurrently for that task
 
 #### Scenario: Sequential across tasks per row
-- **WHEN** a row has tasks "create-page" and "update-spreadsheet" in order
-- **THEN** "update-spreadsheet" SHALL NOT begin for that row until "create-page" is `done`, regardless of parallel mode
+- **WHEN** a row has tasks "create_page" and "update_spreadsheet" in order
+- **THEN** "update_spreadsheet" SHALL NOT begin for that row until "create_page" is `done`, regardless of parallel mode
 
-#### Scenario: QA remains sequential
+#### Scenario: QA runs concurrently in parallel mode
 - **WHEN** a batch of dev agents completes
-- **THEN** the manager SHALL run QA on successful items one at a time, not in parallel
+- **THEN** the manager SHALL dispatch QA agents for all successful items concurrently via parallel Task tool calls in a single message

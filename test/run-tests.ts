@@ -382,7 +382,7 @@ function printSummary(results: TestResult[]): void {
 // Fixtures: deterministic shift content for each test
 // ---------------------------------------------------------------------------
 
-const FIXTURE_TASK_NAME = "hello-world";
+const FIXTURE_TASK_NAME = "hello_world";
 
 const FIXTURE_MANAGER_EMPTY = `## Shift Configuration
 
@@ -406,6 +406,26 @@ const FIXTURE_MANAGER_WITH_TASK = `## Shift Configuration
 
 - name: ${TEST_SHIFT_NAME}
 - created: 2026-01-01
+
+## Task Order
+
+1. ${FIXTURE_TASK_NAME}
+
+## Progress
+
+- Total items: 3
+- Completed: 0
+- Failed: 0
+- Remaining: 3
+`;
+
+const FIXTURE_MANAGER_PARALLEL = `## Shift Configuration
+
+- name: ${TEST_SHIFT_NAME}
+- created: 2026-01-01
+- parallel: true
+- current-batch-size: 3
+- max-batch-size: 3
 
 ## Task Order
 
@@ -748,38 +768,39 @@ const tests: TestDefinition[] = [
       );
     },
     checks: () => {
-      const tablePath = join(WORKSPACE_DIR, ".nightshift", TEST_SHIFT_NAME, "table.csv");
-      if (!existsSync(tablePath)) {
-        return [{ label: "table.csv exists", type: "file" as const, path: `.nightshift/${TEST_SHIFT_NAME}/table.csv` }];
-      }
+      const shiftDir = `.nightshift/${TEST_SHIFT_NAME}`;
+      return [
+        { label: "alpha.txt exists", type: "file" as const, path: `${shiftDir}/alpha.txt` },
+        { label: "beta.txt exists", type: "file" as const, path: `${shiftDir}/beta.txt` },
+        { label: "gamma.txt exists", type: "file" as const, path: `${shiftDir}/gamma.txt` },
+      ];
+    },
+  },
 
-      const content = readFileSync(tablePath, "utf-8");
-      const lines = content.split("\n").filter((l) => l.trim() !== "");
-      if (lines.length <= 1) {
-        return [{ label: "table.csv has data rows", type: "csv-row-count" as const, path: `.nightshift/${TEST_SHIFT_NAME}/table.csv`, minRows: 1 }];
-      }
-
-      const header = lines[0].split(",").map((c) => c.trim());
-      const taskIdx = header.indexOf(FIXTURE_TASK_NAME);
-      let hasProcessed = false;
-
-      if (taskIdx >= 0) {
-        for (let i = 1; i < lines.length; i++) {
-          const cells = lines[i].split(",").map((c) => c.trim());
-          if (cells[taskIdx] && cells[taskIdx] !== "todo") {
-            hasProcessed = true;
-          }
-        }
-      }
-
-      // Use a deterministic check: if processed, check the real file; if not, check a nonexistent path
-      return [{
-        label: "at least one item processed (status changed from todo)",
-        type: "file" as const,
-        path: hasProcessed
-          ? `.nightshift/${TEST_SHIFT_NAME}/table.csv`
-          : `.nightshift/${TEST_SHIFT_NAME}/__no-items-processed__`,
-      }];
+  // -- 5b. nightshift-start-parallel test --
+  // Fixture: shift with task, 3 rows all at "todo", parallel mode with batch size 3
+  {
+    name: "nightshift-start-parallel",
+    run: async () => {
+      ensureInit();
+      cleanShift();
+      setupShift({
+        manager: FIXTURE_MANAGER_PARALLEL,
+        table: FIXTURE_TABLE_WITH_DATA,
+        taskFile: { name: FIXTURE_TASK_NAME, content: FIXTURE_TASK_FILE },
+      });
+      await runOpenCodeCommand(
+        "nightshift-start",
+        `${TEST_SHIFT_NAME} -- Start the shift immediately. Do not ask for confirmation.`,
+      );
+    },
+    checks: () => {
+      const shiftDir = `.nightshift/${TEST_SHIFT_NAME}`;
+      return [
+        { label: "alpha.txt exists", type: "file" as const, path: `${shiftDir}/alpha.txt` },
+        { label: "beta.txt exists", type: "file" as const, path: `${shiftDir}/beta.txt` },
+        { label: "gamma.txt exists", type: "file" as const, path: `${shiftDir}/gamma.txt` },
+      ];
     },
   },
 

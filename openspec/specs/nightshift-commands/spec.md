@@ -89,7 +89,7 @@ The system SHALL provide a `/nightshift-add-task` command that adds a new task f
 The system SHALL provide a `/nightshift-test-task` command that executes a single task on a single table row for testing without modifying table state. Row data SHALL be read using `qsv slice` and `qsv select`.
 
 #### Scenario: Test specific task and row
-- **WHEN** user runs `/nightshift-test-task my-batch-job` and specifies task "create-page" and row 3
+- **WHEN** user runs `/nightshift-test-task my-batch-job` and specifies task "create_page" and row 3
 - **THEN** the system SHALL extract row 3's data using `qsv slice --index 2 table.csv`, execute the task steps, run QA validation, and display the full results without updating table.csv
 
 #### Scenario: Test prompts for task and row

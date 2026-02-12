@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Task file format
-The system SHALL define tasks as Markdown files with three mandatory sections: Configuration, Steps, and Validation. Each task file SHALL be named `<task-name>.md` in kebab-case.
+The system SHALL define tasks as Markdown files with three mandatory sections: Configuration, Steps, and Validation. Each task file SHALL be named `<task_name>.md` in snake_case (no hyphens — hyphens conflict with qsv column selectors).
 
 #### Scenario: Valid task file structure
 - **WHEN** a task file is read
@@ -72,7 +72,7 @@ The Validation section SHALL describe criteria the QA agent uses to verify task 
 The system SHALL support running a single task on a single table item for testing purposes, without affecting other items or tasks in the shift.
 
 #### Scenario: Test a task on one row
-- **WHEN** a user invokes test-task for task "create-page" on row 5
+- **WHEN** a user invokes test-task for task "create_page" on row 5
 - **THEN** the system SHALL execute the task steps on row 5 only, run QA validation, and report the result without updating the table status
 
 #### Scenario: Test preserves table state

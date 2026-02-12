@@ -43,12 +43,12 @@ The system SHALL define a `nightshift-manager` subagent that orchestrates shift 
 The manager SHALL process tasks for each item in the order specified in the Task Order section of `manager.md`. A subsequent task for an item SHALL NOT begin until all preceding tasks for that item are `done`.
 
 #### Scenario: Sequential task processing per item
-- **WHEN** a shift has tasks "create-page" then "update-spreadsheet" and item row 5 has `create-page: done` and `update-spreadsheet: todo`
-- **THEN** the manager SHALL process "update-spreadsheet" for row 5
+- **WHEN** a shift has tasks "create_page" then "update_spreadsheet" and item row 5 has `create_page: done` and `update_spreadsheet: todo`
+- **THEN** the manager SHALL process "update_spreadsheet" for row 5
 
 #### Scenario: Blocked task skipped
-- **WHEN** item row 5 has `create-page: failed` and `update-spreadsheet: todo`
-- **THEN** the manager SHALL NOT process "update-spreadsheet" for row 5 since the prerequisite task failed
+- **WHEN** item row 5 has `create_page: failed` and `update_spreadsheet: todo`
+- **THEN** the manager SHALL NOT process "update_spreadsheet" for row 5 since the prerequisite task failed
 
 ### Requirement: Manager is the sole writer of table state
 The manager agent SHALL be the only agent that writes to `table.csv`. The dev and qa agents SHALL report results back to the manager, which then updates the table. All table writes SHALL use `qsv edit -i` or `qsv` output piped to the table file.
@@ -65,7 +65,7 @@ The manager agent SHALL be the only agent that writes to `table.csv`. The dev an
 The system SHALL define a `nightshift-dev` subagent that executes task steps on a single table item. The dev agent SHALL receive the task steps, item metadata, shift metadata, environment variables (if a `.env` file exists), and tool configuration from the manager. After execution, the dev agent SHALL run self-validation against the Validation criteria, retry up to 2 times if self-validation fails (refining its approach in-memory across retries), and report step improvement recommendations to the manager.
 
 #### Scenario: Dev executes task steps
-- **WHEN** the dev agent is invoked for task "create-page" on item row 5
+- **WHEN** the dev agent is invoked for task "create_page" on item row 5
 - **THEN** it SHALL follow the Steps section of the task file, substituting `{column_name}` placeholders with values from row 5's metadata columns, `{ENV:VAR_NAME}` placeholders with values from the shift's `.env` file, and `{SHIFT:FOLDER}` and `{SHIFT:NAME}` placeholders with the shift directory path and shift name respectively
 
 #### Scenario: Dev has scoped tool access
@@ -88,7 +88,7 @@ The system SHALL define a `nightshift-dev` subagent that executes task steps on 
 The system SHALL define a `nightshift-qa` subagent that verifies task completion against validation criteria. The QA agent SHALL receive the validation criteria, item metadata, and the dev agent's reported results.
 
 #### Scenario: QA checks all validation criteria
-- **WHEN** the qa agent is invoked for task "create-page" on item row 5
+- **WHEN** the qa agent is invoked for task "create_page" on item row 5
 - **THEN** it SHALL evaluate each criterion in the Validation section independently and report pass/fail per criterion
 
 #### Scenario: QA returns pass when all criteria met

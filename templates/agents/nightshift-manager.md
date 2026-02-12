@@ -39,11 +39,17 @@ You receive a prompt from the `/nightshift-start` command containing:
 ### 1. Read Shift State
 
 Read these files from the shift directory:
-- `manager.md` — for task order, configuration, and `parallel` setting
+- `manager.md` — for task order, configuration, `parallel` setting, and batch size configuration
 - `table.csv` — for item statuses
 - `.env` — for environment variables (optional; if the file does not exist, proceed without environment variables)
 
 From the Shift Configuration section of `manager.md`, check for `parallel: true`. If present, use parallel batch processing mode. If omitted or `false`, use sequential processing mode (batch size fixed at 1).
+
+When `parallel: true`, also read these optional fields from the Shift Configuration section:
+- `current-batch-size` — the initial/current batch size. If omitted or set to a non-positive integer or non-numeric value, default to 2.
+- `max-batch-size` — the maximum batch size cap. If omitted or set to a non-positive integer or non-numeric value, treat as no cap (unlimited growth).
+
+Both fields are ignored when `parallel` is not `true`.
 
 ### 2. Handle Resume (Stale Statuses)
 
@@ -63,21 +69,21 @@ For each matching row, reset to `todo` using `qsv edit -i`:
 qsv edit -i table.csv <task-column> <qsv_index> todo
 ```
 
-**Row index mapping:** qsv uses 0-based row indices (excluding the header). Nightshift's `row` column is 1-based. Always convert: `qsv_index = row_number - 1`. For example, to update row 3: `qsv edit -i table.csv create-page 2 todo`.
+**Row index mapping:** qsv uses 0-based row indices (excluding the header). Nightshift's `row` column is 1-based. Always convert: `qsv_index = row_number - 1`. For example, to update row 3: `qsv edit -i table.csv create_page 2 todo`.
 
 ### 3. Item Selection Algorithm
 
 Use `qsv` to read item statuses when determining what to process next:
 
 ```bash
-# Read a specific cell: status of task "create-page" for row 3 (qsv_index = 2)
-qsv slice --index 2 table.csv | qsv select create-page
+# Read a specific cell: status of task "create_page" for row 3 (qsv_index = 2)
+qsv slice --index 2 table.csv | qsv select create_page
 
 # Read all data for a row
 qsv slice --index 2 table.csv
 
 # Find all todo items for a task
-qsv search --exact todo --select create-page table.csv
+qsv search --exact todo --select create_page table.csv
 
 # Count total items
 qsv count table.csv
@@ -115,7 +121,8 @@ This ensures:
 Collect a batch of up to N `todo` items for the current task, where N is the current batch size:
 
 ```
-batch_size = current_batch_size (starts at 2)
+batch_size = current_batch_size (from Shift Configuration, default 2)
+max_batch = max_batch_size (from Shift Configuration, or unlimited if omitted)
 batch = []
 
 for each row in table.csv (ordered by row number):
@@ -137,8 +144,9 @@ for each row in table.csv (ordered by row number):
 ```
 
 **Adaptive batch sizing:**
-- Start at batch size 2
+- Start at batch size read from `current-batch-size` in Shift Configuration (default 2 if omitted)
 - After a batch completes: if ALL items succeeded → double the batch size; if ANY item failed → halve the batch size (minimum 1)
+- After adjustment, cap the batch size at `max-batch-size` if that field is set (batch size SHALL NOT exceed `max-batch-size`)
 - A batch size of 1 is effectively sequential mode with centralized learning
 
 ### 4. Delegate to Dev
@@ -269,9 +277,7 @@ If the dev returned a `FAILED` status, skip QA — set the item-task to `failed`
 After ALL dev agents in the batch return:
 
 1. For each item whose dev returned `FAILED`: set the item-task to `failed` immediately using `qsv edit -i table.csv <task-column> <qsv_index> failed` (skip QA)
-2. For each item whose dev returned `SUCCESS`: run QA **sequentially, one at a time** — update the item-task to `qa` using `qsv edit -i`, invoke the QA agent with the same prompt format as sequential mode, then update status based on QA result before moving to the next item
-
-QA is always sequential, even in parallel mode, to keep verification simple and predictable.
+2. For all items whose dev returned `SUCCESS`: set all item-tasks to `qa` using `qsv edit -i`, then invoke QA agents for all successful items **concurrently via parallel Task tool calls in a single message** — each with the same prompt format as sequential mode but with different item data. After all QA agents return, update each item's status based on QA results.
 
 ### 6. Update Status After QA
 
@@ -314,6 +320,10 @@ After processing a batch (dev delegation, step improvements, QA), adjust the bat
 - If ALL items in the batch reached `done` → double the batch size
 - If ANY item in the batch was marked `failed` → halve the batch size (minimum 1)
 
+After adjustment, apply the `max-batch-size` cap: if `max-batch-size` is set in the Shift Configuration and the new batch size exceeds it, set the batch size to `max-batch-size`.
+
+Then write the new batch size back to the `current-batch-size` field in the Shift Configuration section of `manager.md`. This persists the batch size for resume and provides visibility into the current state.
+
 Then loop back to step 3 to collect the next batch. Continue until no more `todo` items remain.
 
 ### 9. Completion
@@ -354,14 +364,14 @@ All CSV operations on `table.csv` use `qsv` CLI commands via the Bash tool. Neve
 **Examples:**
 
 ```bash
-# Update row 3's create-page status to in_progress (qsv_index = 3 - 1 = 2)
-qsv edit -i table.csv create-page 2 in_progress
+# Update row 3's create_page status to in_progress (qsv_index = 3 - 1 = 2)
+qsv edit -i table.csv create_page 2 in_progress
 
-# Find all todo items for create-page
-qsv search --exact todo --select create-page table.csv
+# Find all todo items for create_page
+qsv search --exact todo --select create_page table.csv
 
 # Count done items
-qsv search --exact done --select create-page table.csv | qsv count
+qsv search --exact done --select create_page table.csv | qsv count
 
 # Read row 5's data (qsv_index = 4)
 qsv slice --index 4 table.csv

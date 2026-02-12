@@ -78,7 +78,7 @@ This scaffolds `.nightshift/my-batch-job/` with a `manager.md` and an empty `tab
 /nightshift-add-task my-batch-job
 ```
 
-The command asks you to describe what the agent should do, what tools it needs, step-by-step instructions, and how to verify success. It creates a task file (e.g., `create-page.md`) with three sections:
+The command asks you to describe what the agent should do, what tools it needs, step-by-step instructions, and how to verify success. It creates a task file (e.g., `create_page.md`) with three sections:
 
 ```markdown
 ## Configuration
@@ -116,7 +116,7 @@ See [Template Variables](#template-variables) for details.
 Add rows with the metadata columns your tasks reference. The resulting `table.csv` looks like:
 
 ```csv
-row,url,page_title,create-page
+row,url,page_title,create_page
 1,https://example.com/site1,Welcome,todo
 2,https://example.com/site2,About Us,todo
 3,https://example.com/site3,Contact,todo
@@ -169,8 +169,8 @@ All commands accept a shift name as an argument, or prompt interactively if omit
     manager.md          # Shift config: name, task order, progress counters
     table.csv           # Items and their per-task statuses
     .env                # Optional: environment variables for this shift (gitignored)
-    create-page.md      # Task definition (Configuration, Steps, Validation)
-    update-cms.md       # Another task definition
+    create_page.md      # Task definition (Configuration, Steps, Validation)
+    update_cms.md       # Another task definition
   archive/
     2026-02-08-old-job/ # Archived shift (date-prefixed)
 ```
@@ -184,11 +184,14 @@ Tracks task execution order and progress. Updated automatically by the manager a
 
 - name: my-batch-job
 - created: 2026-02-08
+# - parallel: true
+# - current-batch-size: 2
+# - max-batch-size: 10
 
 ## Task Order
 
-1. create-page
-2. update-cms
+1. create_page
+2. update_cms
 
 ## Progress
 
@@ -198,12 +201,14 @@ Tracks task execution order and progress. Updated automatically by the manager a
 - Remaining: 2
 ```
 
+The `parallel`, `current-batch-size`, and `max-batch-size` fields are optional. See [Parallel Execution](#parallel-execution) for details.
+
 ### table.csv
 
 Each row is an item. Metadata columns hold the data tasks need. Status columns (one per task) track progress.
 
 ```csv
-row,url,page_title,create-page,update-cms
+row,url,page_title,create_page,update_cms
 1,https://example.com/site1,Welcome,done,in_progress
 2,https://example.com/site2,About Us,todo,todo
 3,https://example.com/site3,Contact,todo,todo
@@ -250,6 +255,41 @@ If a shift is interrupted, `/nightshift-start` picks up where it left off. The m
 ### Graceful degradation
 
 A single item failure never stops the entire shift. The manager marks the failed item and moves on to the next one.
+
+### Parallel execution
+
+By default, the manager processes one row at a time. To enable parallel processing, add `parallel: true` to the Shift Configuration section of `manager.md`:
+
+```markdown
+## Shift Configuration
+
+- name: my-batch-job
+- created: 2026-02-08
+- parallel: true
+```
+
+In parallel mode, the manager dispatches multiple rows concurrently for each task using adaptive batch sizing. Two optional fields control batch behavior:
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `current-batch-size` | 2 | Initial batch size. Updated automatically after each batch. |
+| `max-batch-size` | no cap | Upper bound on batch size growth. |
+
+```markdown
+## Shift Configuration
+
+- name: my-batch-job
+- created: 2026-02-08
+- parallel: true
+- current-batch-size: 4
+- max-batch-size: 10
+```
+
+**Adaptive sizing:** The manager doubles the batch size after a fully successful batch and halves it (minimum 1) when any item fails. After each adjustment, the manager writes the new value back to `current-batch-size` in `manager.md`, so resumed shifts pick up where they left off.
+
+Both `current-batch-size` and `max-batch-size` are ignored when `parallel` is not `true`. Invalid values (non-positive or non-numeric) are treated as omitted.
+
+Parallelism applies only across rows for a single task. Tasks within a row remain strictly sequential per the task order.
 
 ## Template Variables
 

@@ -4,7 +4,11 @@
     "updatedAt": "2026-02-12T20:09:49.902Z"
   },
   "nightshift-start": {
-    "durationMs": 270646,
-    "updatedAt": "2026-02-12T19:30:10.106Z"
+    "durationMs": 254941,
+    "updatedAt": "2026-02-12T21:21:31.712Z"
+  },
+  "nightshift-start-parallel": {
+    "durationMs": 160972,
+    "updatedAt": "2026-02-12T21:43:35.407Z"
   }
 }

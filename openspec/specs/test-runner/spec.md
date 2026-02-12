@@ -111,6 +111,13 @@ The system SHALL include a test that validates the `nightshift-start` command in
 - **WHEN** the runner executes `nightshift-start` on a shift with tasks and rows
 - **THEN** `table.csv` SHALL contain at least one row where a task status column has a value other than `todo` (indicating processing occurred)
 
+### Requirement: Nightshift-start-parallel command test
+The system SHALL include a test that validates the `nightshift-start` command initiates shift execution in parallel mode with configurable batch sizing.
+
+#### Scenario: Start command processes items in parallel mode
+- **WHEN** the runner executes `nightshift-start` on a shift with `parallel: true`, `current-batch-size: 3`, and `max-batch-size: 3` in the Shift Configuration section, and the shift has tasks and rows
+- **THEN** `table.csv` SHALL contain at least one row where a task status column has a value other than `todo` (indicating processing occurred)
+
 ### Requirement: Nightshift-test-task command test
 The system SHALL include a test that validates the `nightshift-test-task` command executes a single task on a single row without modifying state.
 
@@ -156,7 +163,7 @@ The system SHALL print a summary table to stdout after all tests complete. The s
 - **THEN** the runner SHALL exit with a non-zero exit code and print a summary showing which tests failed and their accuracy ratios
 
 ### Requirement: Test execution order
-The system SHALL execute tests in a fixed sequential order that respects dependencies between commands: `init`, `nightshift-create`, `nightshift-add-task`, `nightshift-update-table`, `nightshift-start`, `nightshift-test-task`, `nightshift-archive`.
+The system SHALL execute tests in a fixed sequential order that respects dependencies between commands: `init`, `nightshift-create`, `nightshift-add-task`, `nightshift-update-table`, `nightshift-start`, `nightshift-start-parallel`, `nightshift-test-task`, `nightshift-archive`.
 
 #### Scenario: Sequential execution
 - **WHEN** the test runner starts

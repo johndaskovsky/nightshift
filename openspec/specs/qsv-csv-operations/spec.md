@@ -13,23 +13,23 @@ The system SHALL use [qsv](https://github.com/dathere/qsv) as the recommended CL
 The system SHALL read individual cell values from `table.csv` by piping `qsv slice` into `qsv select`. The row index SHALL be 0-based (excluding the header row), requiring a conversion from Nightshift's 1-based `row` column: `qsv_index = row_number - 1`.
 
 #### Scenario: Read a single cell value
-- **WHEN** the manager needs the `create-page` status for row 3
-- **THEN** it SHALL execute `qsv slice --index 2 table.csv | qsv select create-page` (index 2 because row 3 maps to 0-based index 2)
+- **WHEN** the manager needs the `create_page` status for row 3
+- **THEN** it SHALL execute `qsv slice --index 2 table.csv | qsv select create_page` (index 2 because row 3 maps to 0-based index 2)
 
 #### Scenario: Read an entire row
 - **WHEN** the manager needs all metadata for row 5
 - **THEN** it SHALL execute `qsv slice --index 4 table.csv`
 
 #### Scenario: Read a column across all rows
-- **WHEN** the manager needs all values from the `create-page` column
-- **THEN** it SHALL execute `qsv select row,create-page table.csv`
+- **WHEN** the manager needs all values from the `create_page` column
+- **THEN** it SHALL execute `qsv select row,create_page table.csv`
 
 ### Requirement: Cell update operations
 The system SHALL update individual cell values in `table.csv` using `qsv edit` with the `-i` (in-place) flag. The column SHALL be specified by name and the row by 0-based index.
 
 #### Scenario: Update a status cell
-- **WHEN** the manager needs to set row 3's `create-page` status to `in_progress`
-- **THEN** it SHALL execute `qsv edit -i table.csv create-page 2 in_progress`
+- **WHEN** the manager needs to set row 3's `create_page` status to `in_progress`
+- **THEN** it SHALL execute `qsv edit -i table.csv create_page 2 in_progress`
 
 #### Scenario: In-place edit creates backup
 - **WHEN** `qsv edit -i` modifies `table.csv`
@@ -46,27 +46,27 @@ The system SHALL count data rows in `table.csv` using `qsv count`, which exclude
 The system SHALL filter rows by column value using `qsv search` with the `--exact` and `--select` flags.
 
 #### Scenario: Find all todo items for a task
-- **WHEN** the manager needs to identify items with status `todo` for task `create-page`
-- **THEN** it SHALL execute `qsv search --exact todo --select create-page table.csv`
+- **WHEN** the manager needs to identify items with status `todo` for task `create_page`
+- **THEN** it SHALL execute `qsv search --exact todo --select create_page table.csv`
 
 #### Scenario: Find all non-done items
 - **WHEN** the manager needs to find items that are not yet complete
-- **THEN** it SHALL execute `qsv search --exact done --select create-page --invert-match table.csv`
+- **THEN** it SHALL execute `qsv search --exact done --select create_page --invert-match table.csv`
 
 #### Scenario: Quick existence check
 - **WHEN** the manager needs to check whether any item has status `failed`
-- **THEN** it SHALL execute `qsv search --exact failed --select create-page --quick table.csv` and inspect the exit code (0 = found, non-zero = not found)
+- **THEN** it SHALL execute `qsv search --exact failed --select create_page --quick table.csv` and inspect the exit code (0 = found, non-zero = not found)
 
 #### Scenario: Count items matching a status
 - **WHEN** the manager needs to count how many items have status `done`
-- **THEN** it SHALL execute `qsv search --exact done --select create-page table.csv | qsv count`
+- **THEN** it SHALL execute `qsv search --exact done --select create_page table.csv | qsv count`
 
 ### Requirement: Column addition
 The system SHALL add new columns to `table.csv` using `qsv enum` with `--constant` and `--new-column` flags.
 
 #### Scenario: Add a task status column
-- **WHEN** a new task `qa-check` is added to a shift
-- **THEN** the system SHALL execute `qsv enum --constant todo --new-column qa-check table.csv` and write the output back to `table.csv`
+- **WHEN** a new task `qa_check` is added to a shift
+- **THEN** the system SHALL execute `qsv enum --constant todo --new-column qa_check table.csv` and write the output back to `table.csv`
 
 ### Requirement: Row appending
 The system SHALL append rows to `table.csv` using `qsv cat rows`.

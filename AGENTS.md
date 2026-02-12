@@ -104,7 +104,8 @@ Status values use snake_case: `todo`, `in_progress`, `qa`, `done`, `failed`.
 
 ### File and directory naming
 
-- **kebab-case universally** for files and directories: `nightshift-dev.md`, `nightshift-commands/`
+- **kebab-case** for files and directories: `nightshift-dev.md`, `nightshift-commands/`
+- **snake_case** for task names: `create_page`, `update_spreadsheet` (task names become CSV column names; hyphens conflict with qsv selectors)
 - **Date-prefixed** for archived changes: `2026-02-08-add-nightshift-framework/`
 - **Verb-led prefixes** for change IDs: `add-`, `update-`, `remove-`, `refactor-`
 
@@ -147,7 +148,7 @@ Note: Nightshift does not manage or template `opencode.jsonc` for target project
 
 - Header row required
 - `row` as first column (sequential integer)
-- Status columns named after tasks (kebab-case)
+- Status columns named after tasks (snake_case — no hyphens, which conflict with qsv selectors)
 - No quoting unless needed
 
 ### Specification style
