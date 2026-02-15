@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Manager agent role
-The system SHALL define a `nightshift-manager` subagent that orchestrates shift execution. The manager SHALL read `manager.md`, `table.csv`, and the shift's `.env` file (if present), determine which items need processing, and delegate work to the dev and qa agents. The manager SHALL pass environment variable key-value pairs to the dev agent as part of the delegation context. The manager SHALL be responsible for applying step improvements to task files based on dev agent recommendations. The manager SHALL use `qsv` CLI commands for all CSV operations on `table.csv`.
+The system SHALL define a `nightshift-manager` subagent that orchestrates shift execution. The manager SHALL read `manager.md`, `table.csv`, and the shift's `.env` file (if present), determine which items need processing, and delegate work to the dev and qa agents. The manager SHALL pass environment variable key-value pairs to the dev agent as part of the delegation context. The manager SHALL be responsible for applying step improvements to task files based on dev agent recommendations. The manager SHALL use `qsv` CLI commands for all CSV operations on `table.csv`. The manager SHALL process all remaining batches autonomously within a single session, only returning to the supervisor when it detects compaction or completes all work.
 
 #### Scenario: Manager reads shift state
 - **WHEN** the manager agent is invoked for a shift
@@ -9,35 +9,43 @@ The system SHALL define a `nightshift-manager` subagent that orchestrates shift 
 
 #### Scenario: Manager delegates to dev
 - **WHEN** the manager identifies an item-task with status `todo`
-- **THEN** it SHALL invoke the nightshift-dev agent with the task file contents (including Validation section), the item's row metadata (extracted via `qsv slice` and `qsv select`), environment variables from `.env` (if present), shift metadata (shift name, shift directory path), and instructions about self-validation and retry behavior, and update the item-task status to `in_progress` using `qsv edit -i`
+- **THEN** it SHALL invoke the nightshift-dev agent with the task file contents (including Validation section), the item's row metadata (extracted via `qsv slice` and `qsv select`), environment variables from `.env` (if present), shift metadata (shift name, shift directory path), and instructions about self-validation and retry behavior
 
 #### Scenario: Manager delegates to qa
-- **WHEN** the dev agent completes work on an item-task
-- **THEN** the manager SHALL invoke the nightshift-qa agent with the task's validation criteria and the item's row metadata, and update the item-task status to `qa` using `qsv edit -i`
+- **WHEN** the dev agent completes work on an item-task with `overall_status` indicating success
+- **THEN** the manager SHALL verify the dev wrote `qa` status to `table.csv` and invoke the nightshift-qa agent with the task's validation criteria, the item's row metadata, and state update parameters
 
-#### Scenario: Manager updates status after qa
-- **WHEN** the qa agent returns a pass result
-- **THEN** the manager SHALL update the item-task status to `done` in table.csv using `qsv edit -i`
-
-#### Scenario: Manager handles qa failure
-- **WHEN** the qa agent returns a fail result
-- **THEN** the manager SHALL update the item-task status to `failed` in table.csv using `qsv edit -i` and record the failure reason
+#### Scenario: Manager handles qa result
+- **WHEN** the qa agent returns a result
+- **THEN** the manager SHALL read the `overall_status` field from the QA output and log the `summary` if the result is `FAIL`
 
 #### Scenario: Manager handles dev failure after retries
-- **WHEN** the dev agent returns a failure result (after exhausting retries)
-- **THEN** the manager SHALL update the item-task status to `failed` in table.csv using `qsv edit -i` and record the failure details including attempt count
+- **WHEN** the dev agent returns a result with `overall_status` containing `FAILED`
+- **THEN** the manager SHALL log the `error` field from the dev output and skip QA for this item
 
 #### Scenario: Manager updates progress section
 - **WHEN** an item-task status changes
 - **THEN** the manager SHALL update the Progress section in `manager.md` with current counts derived from `qsv search` and `qsv count` operations on `table.csv`
 
 #### Scenario: Manager applies step improvements
-- **WHEN** the manager receives results from dev agent(s) containing a Recommendations section
+- **WHEN** the manager receives results from dev agent(s) containing a `recommendations` field that is not "None"
 - **THEN** the manager SHALL review the recommendations, synthesize non-contradictory improvements, and apply a single coherent update to the Steps section of the task file before delegating the next item or batch
 
 #### Scenario: Manager deduplicates recommendations from parallel batch
 - **WHEN** the manager receives recommendations from multiple concurrent dev agents in a parallel batch
 - **THEN** it SHALL identify common patterns, deduplicate similar suggestions, resolve contradictions, and apply one unified update to the Steps section
+
+#### Scenario: Manager continues autonomously between batches
+- **WHEN** the manager completes a batch and compaction detection reports `Compacted: false`
+- **THEN** the manager SHALL proceed directly to the next batch without returning to the supervisor
+
+#### Scenario: Manager yields to supervisor on compaction
+- **WHEN** the manager completes a batch and compaction detection reports `Compacted: true`
+- **THEN** the manager SHALL output `Progress: M/N` and `Compacted: true` and return to the supervisor
+
+#### Scenario: Manager yields to supervisor on completion
+- **WHEN** the manager completes a batch and no `todo` items remain across any task column
+- **THEN** the manager SHALL output a final summary with `Progress: M/N` and `Compacted: false` and return to the supervisor
 
 ### Requirement: Manager processes tasks in order
 The manager SHALL process tasks for each item in the order specified in the Task Order section of `manager.md`. A subsequent task for an item SHALL NOT begin until all preceding tasks for that item are `done`.
@@ -50,16 +58,24 @@ The manager SHALL process tasks for each item in the order specified in the Task
 - **WHEN** item row 5 has `create_page: failed` and `update_spreadsheet: todo`
 - **THEN** the manager SHALL NOT process "update_spreadsheet" for row 5 since the prerequisite task failed
 
-### Requirement: Manager is the sole writer of table state
-The manager agent SHALL be the only agent that writes to `table.csv`. The dev and qa agents SHALL report results back to the manager, which then updates the table. All table writes SHALL use `qsv edit -i` or `qsv` output piped to the table file.
+### Requirement: Decentralized status writes
+Dev and QA agents SHALL write their own status transitions to `table.csv` using `flock -x` prefixed `qsv edit -i` commands. The manager SHALL NOT write status transitions — it reads `table.csv` for status information and writes only to `manager.md` and task files.
 
-#### Scenario: Dev reports to manager
-- **WHEN** the dev agent finishes executing steps
-- **THEN** it SHALL return results to the manager without directly modifying table.csv
+#### Scenario: Dev writes status on success
+- **WHEN** the dev agent successfully completes execution and self-validation
+- **THEN** it SHALL write `qa` status to `table.csv` using `flock -x <table_path> qsv edit -i <table_path> <task_column> <qsv_index> qa`
 
-#### Scenario: QA reports to manager
-- **WHEN** the qa agent finishes verification
-- **THEN** it SHALL return pass/fail results to the manager without directly modifying table.csv
+#### Scenario: Dev writes status on failure
+- **WHEN** the dev agent fails after exhausting retries
+- **THEN** it SHALL write `failed` status to `table.csv` using `flock -x <table_path> qsv edit -i <table_path> <task_column> <qsv_index> failed`
+
+#### Scenario: QA writes status on pass
+- **WHEN** the QA agent verifies all criteria pass
+- **THEN** it SHALL write `done` status to `table.csv` using `flock -x <table_path> qsv edit -i <table_path> <task_column> <qsv_index> done`
+
+#### Scenario: QA writes status on fail
+- **WHEN** the QA agent determines any criterion fails
+- **THEN** it SHALL write `failed` status to `table.csv` using `flock -x <table_path> qsv edit -i <table_path> <task_column> <qsv_index> failed`
 
 ### Requirement: Dev agent role
 The system SHALL define a `nightshift-dev` subagent that executes task steps on a single table item. The dev agent SHALL receive the task steps, item metadata, shift metadata, environment variables (if a `.env` file exists), and tool configuration from the manager. After execution, the dev agent SHALL run self-validation against the Validation criteria, retry up to 2 times if self-validation fails (refining its approach in-memory across retries), and report step improvement recommendations to the manager.
@@ -74,7 +90,7 @@ The system SHALL define a `nightshift-dev` subagent that executes task steps on 
 
 #### Scenario: Dev returns structured results
 - **WHEN** the dev agent completes execution
-- **THEN** it SHALL return to the manager: step-by-step outcomes, captured values, any error details, self-validation results, attempt count, and step improvement recommendations
+- **THEN** it SHALL return to the manager: `overall_status`, `recommendations`, and `error` (if failed) — verbose fields (per-step outcomes, captured values, self-validation details, attempt count) are used internally but not included in the output to the manager
 
 #### Scenario: Dev processes one item at a time
 - **WHEN** the dev agent is invoked
@@ -85,19 +101,19 @@ The system SHALL define a `nightshift-dev` subagent that executes task steps on 
 - **THEN** it SHALL include the improvements as recommendations in its result output and SHALL NOT directly edit the Steps section of the task file
 
 ### Requirement: QA agent role
-The system SHALL define a `nightshift-qa` subagent that verifies task completion against validation criteria. The QA agent SHALL receive the validation criteria, item metadata, and the dev agent's reported results.
+The system SHALL define a `nightshift-qa` subagent that verifies task completion against validation criteria. The QA agent SHALL receive the validation criteria, item metadata, and state update parameters. The QA agent SHALL NOT receive the dev agent's results.
 
 #### Scenario: QA checks all validation criteria
 - **WHEN** the qa agent is invoked for task "create_page" on item row 5
-- **THEN** it SHALL evaluate each criterion in the Validation section independently and report pass/fail per criterion
+- **THEN** it SHALL evaluate each criterion in the Validation section independently using its own tools (Read, Glob, Grep, Playwright, MCP tools as configured) and report pass/fail per criterion internally
 
 #### Scenario: QA returns pass when all criteria met
 - **WHEN** all validation criteria pass for an item-task
-- **THEN** the qa agent SHALL return a pass result to the manager
+- **THEN** the qa agent SHALL return a result with `overall_status: "PASS"` and a `summary` field
 
-#### Scenario: QA returns fail with details
+#### Scenario: QA returns fail with summary
 - **WHEN** any validation criterion fails for an item-task
-- **THEN** the qa agent SHALL return a fail result to the manager with details about which criteria failed and why
+- **THEN** the qa agent SHALL return a result with `overall_status: "FAIL"` and a `summary` field explaining which criteria failed and why
 
 #### Scenario: QA has scoped tool access
 - **WHEN** the qa agent is invoked with task configuration listing `tools: playwright, google_workspace`
@@ -106,6 +122,21 @@ The system SHALL define a `nightshift-qa` subagent that verifies task completion
 #### Scenario: QA does not modify application state
 - **WHEN** the qa agent verifies task completion
 - **THEN** it SHALL only read and observe — it SHALL NOT create, modify, or delete any resources outside of reporting its findings
+
+#### Scenario: QA output excludes per-criterion details
+- **WHEN** the qa agent returns results to the manager
+- **THEN** the results SHALL NOT include a per-criterion `Criteria` section in the output returned to the manager
+
+### Requirement: QA receives item data only
+The QA agent SHALL receive only the validation criteria from the task file, the item's row metadata, and state update parameters. The QA agent SHALL NOT receive the dev agent's results. QA SHALL verify task completion independently using its own tools and the item data.
+
+#### Scenario: QA prompt excludes dev results
+- **WHEN** the manager delegates to the QA agent
+- **THEN** the delegation prompt SHALL NOT include a `## Dev Results` section
+
+#### Scenario: QA verifies independently
+- **WHEN** the QA agent checks a validation criterion
+- **THEN** it SHALL use its own tools to verify the criterion against observable state, using the item data (column values) as context for what to check
 
 ### Requirement: Fresh context per item
 Each dev and qa agent invocation SHALL operate with a fresh context containing only the task instructions and current item metadata — not the full shift history or other item results.
@@ -116,7 +147,7 @@ Each dev and qa agent invocation SHALL operate with a fresh context containing o
 
 #### Scenario: QA gets clean context
 - **WHEN** the manager delegates item row 10 to the qa agent
-- **THEN** the qa agent SHALL receive only: the task's validation criteria, row 10's metadata, and the dev agent's results for row 10
+- **THEN** the qa agent SHALL receive only: the task's validation criteria, row 10's metadata, and state update parameters — not the dev agent's results or results from other rows
 
 ### Requirement: Dev agent self-validation
 The dev agent SHALL evaluate the task's Validation criteria after completing step execution and before reporting results to the manager. This self-validation SHALL use the same criteria as the QA agent.
@@ -176,23 +207,23 @@ The dev agent SHALL retain in-memory self-improvement during retries within a si
 - **THEN** it SHALL include any identified step improvements in the Recommendations section of its output, even if execution failed
 
 ### Requirement: Dev agent extended output contract
-The dev agent's result format SHALL include metadata about retry attempts, self-validation results, and step improvement recommendations.
+The dev agent's result format returned to the manager SHALL include only the fields the manager acts on: `overall_status`, `recommendations`, and `error` (if failed). Verbose fields (per-step outcomes, captured values, self-validation details, attempt count) SHALL NOT be included in the output returned to the manager. The dev agent SHALL still use these fields internally for retry decisions and self-validation.
 
-#### Scenario: Output includes attempt count
+#### Scenario: Output includes overall status
 - **WHEN** the dev agent returns results to the manager
-- **THEN** the results SHALL include an `Attempts` section showing the total number of attempts made (1-3)
-
-#### Scenario: Output includes self-validation results
-- **WHEN** the dev agent returns results to the manager
-- **THEN** the results SHALL include a `Self-Validation` section showing pass/fail per criterion from the final attempt
+- **THEN** the results SHALL include an `overall_status` field with value `SUCCESS`, `FAILED (step N)`, or `FAILED (validation)`
 
 #### Scenario: Output includes recommendations
 - **WHEN** the dev agent returns results to the manager
-- **THEN** the results SHALL include a `Recommendations` section listing any suggested step improvements, or explicitly stating "None" if no improvements were identified
+- **THEN** the results SHALL include a `recommendations` field listing any suggested step improvements, or explicitly stating "None" if no improvements were identified
 
-#### Scenario: Output does not include steps refined flag
+#### Scenario: Output includes error on failure
+- **WHEN** the dev agent returns results with `overall_status` containing `FAILED`
+- **THEN** the results SHALL include an `error` field with the full failure description including details from all attempts
+
+#### Scenario: Output excludes verbose fields
 - **WHEN** the dev agent returns results to the manager
-- **THEN** the results SHALL NOT include a `Steps Refined` flag, as the dev agent no longer modifies the task file directly
+- **THEN** the results SHALL NOT include `Steps`, `Captured Values`, `Self-Validation`, or `Attempts` sections
 
 ### Requirement: Manager agent qsv bash permissions
 The manager agent SHALL have `qsv*` commands allowed in its bash permission configuration, as an exception to the default deny-all bash policy.

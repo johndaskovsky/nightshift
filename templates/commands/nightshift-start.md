@@ -87,7 +87,7 @@ Begin or resume executing a Nightshift shift by invoking the manager agent in a 
 
 6. **Supervisor loop — invoke the manager agent**
 
-   Use the **Task tool** to invoke the `nightshift-manager` subagent. The command thread operates as a supervisor that monitors the manager for progress reports and handles compaction recovery.
+   Use the **Task tool** to invoke the `nightshift-manager` subagent. The manager runs autonomously, processing all batches within a single session. The supervisor only handles compaction recovery — it does not gate individual batches.
 
    **Initial invocation:**
    ```
@@ -99,7 +99,7 @@ Begin or resume executing a Nightshift shift by invoking the manager agent in a 
    Read table.csv for item statuses.
    Process all remaining items following the orchestration logic in your instructions.
 
-   After each batch, output a progress report in this format:
+   When you are done (all items processed or compaction detected), output:
    Progress: M/N
    Compacted: true|false
 
@@ -109,29 +109,21 @@ Begin or resume executing a Nightshift shift by invoking the manager agent in a 
 
    **Loop logic:**
 
-   When the manager returns with a progress report:
-   - Parse the progress report from the manager's output
-   - Display `Progress: M/N` to the user
-
-   - **If `Compacted: false`** (or not present) and items remain (`todo` items exist):
-     - Re-invoke the **same manager session** using `task_id` to continue processing
+   When the manager returns:
+   - Parse `Compacted: true|false` from the manager's output
 
    - **If `Compacted: true`**:
+     - Display the progress line to the user
      - Discard the current manager session
-     - Start a **fresh** manager subagent invocation (new Task tool call without `task_id`) to continue the shift
+     - Start a **fresh** manager subagent invocation (new Task tool call without `task_id`) with the same prompt
+     - Repeat until the manager returns without compaction
 
-   - **If all items are `done` or `failed`** (no `todo` items remain):
-     - Exit the supervisor loop and proceed to the final report
-
-   **Termination check:** After each manager return, verify remaining work:
-   ```bash
-   flock -x .nightshift/<name>/table.csv qsv search --exact todo --select <task-column> .nightshift/<name>/table.csv | qsv count
-   ```
-   If count is 0 for all task columns, the shift is complete.
+   - **If `Compacted: false`** (or not present):
+     - The manager has completed all work — exit the loop and proceed to step 7
 
 7. **Report results**
 
-   After the supervisor loop exits, display the final status:
+   After the supervisor loop exits, parse the manager's completion output for the final counts (the manager includes `Completed`, `Failed`, and `Total items` in its shift complete summary). Display the final status:
    ```
    ## Shift Execution Complete
 
@@ -149,7 +141,7 @@ Begin or resume executing a Nightshift shift by invoking the manager agent in a 
 - Always validate the shift directory structure before starting
 - Always check qsv and flock availability before proceeding — both are required
 - Show the pre-flight summary before invoking the manager
-- Operate as a supervisor loop — re-invoke the manager after each progress report
-- Restart the manager with a fresh session on compaction detection
-- Report results after the supervisor loop exits
+- The manager runs autonomously — do NOT gate individual batches or run termination checks between batches
+- On compaction (`Compacted: true`), discard the session and start a fresh manager invocation
+- On normal completion (`Compacted: false`), parse final counts from the manager's output and display the report
 - Don't invoke the manager if there's nothing to process

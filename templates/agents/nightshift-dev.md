@@ -167,32 +167,12 @@ Return your results to the manager in this structured format:
 ```
 ## Results
 
-### Steps
-1. Step 1 description — SUCCESS
-   Output: <any relevant output>
-2. Step 2 description — SUCCESS
-   Output: <any relevant output>
-3. Step 3 description — FAILED
-   Error: <error details>
-
-### Captured Values
-- url: https://example.com/page/123
-- cms_edit_url: https://cms.example.com/edit/456
-
-### Self-Validation
-- Criterion 1 description — PASS
-- Criterion 2 description — PASS
-- Criterion 3 description — FAIL: <reason>
-
-### Attempts
-Total: 2 (1 retry after self-validation failure)
+### Overall Status
+SUCCESS
 
 ### Recommendations
 - Step 3 should include error handling for missing page title
 - Step 1 selector `.page-header` is fragile; consider using `[data-testid="header"]` instead
-
-### Overall Status
-SUCCESS
 
 ### Error
 <only if failed — description of what went wrong, including all attempt details>
@@ -202,26 +182,23 @@ Use `SUCCESS` when all steps completed AND self-validation passed.
 Use `FAILED (step N)` when a step failed on the final attempt.
 Use `FAILED (validation)` when self-validation failed on the final attempt.
 
+Only these three fields cross the agent boundary to the manager. Per-step outcomes, captured values, self-validation details, and attempt counts are used internally for your retry decisions and self-improvement but are NOT included in the output returned to the manager.
+
 ## Output Contract
 
 Your final message to the manager MUST contain these sections:
 
 | Section | Required | Description |
 |---------|----------|-------------|
-| Steps | Yes | Numbered list with status and output per step (from final attempt) |
-| Captured Values | Yes (can be empty) | Key-value pairs of values produced during execution |
-| Self-Validation | Yes | Per-criterion pass/fail from final attempt |
-| Attempts | Yes | Total attempt count and brief reason for retries |
-| Recommendations | Yes | Suggested step improvements, or "None" if no improvements identified |
 | Overall Status | Yes | `SUCCESS`, `FAILED (step N)`, or `FAILED (validation)` |
+| Recommendations | Yes | Suggested step improvements, or "None" if no improvements identified |
 | Error | Only if failed | Description of the failure, including details from all attempts |
 
 ## Guidelines
 
 - Be precise — follow steps literally, don't improvise unless the step says to
-- Capture values explicitly mentioned in steps (e.g., "record the URL")
+- Capture values explicitly mentioned in steps (e.g., "record the URL") — use them internally for self-validation and retries
 - If a step is ambiguous, try your best interpretation and include a clarification recommendation rather than reporting failure immediately
-- Include enough detail in step output for the QA agent to verify later
 - Do not modify any files other than those created or required by the task steps — never edit the task file itself
 - When refining your approach in-memory for retries, preserve the original intent — make execution clearer and more robust, not different
 - Self-validation is a pre-check, not a replacement for QA — be honest about pass/fail

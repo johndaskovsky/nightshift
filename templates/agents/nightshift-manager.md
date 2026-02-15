@@ -200,14 +200,10 @@ After execution, you MUST update your status in table.csv:
 5. **Retry on failure**: If self-validation fails, refine your approach in-memory and retry. You have up to 3 total attempts (1 initial + 2 retries).
 6. **Update status**: Write your status to table.csv using the State Update parameters above.
 
-Return your results including:
-- steps: numbered list with status and output per step (from final attempt)
-- captured_values: dict of any values captured during execution (URLs, IDs, etc.)
-- self_validation: per-criterion pass/fail from final attempt
-- attempts: total attempt count and brief reason for retries
-- recommendations: list of suggested step improvements, or "None"
+Return your results in this format:
 - overall_status: "SUCCESS", "FAILED (step N)", or "FAILED (validation)"
-- error: error details if failed (include all attempt details), null otherwise
+- recommendations: list of suggested step improvements, or "None"
+- error: error details if failed (include all attempt details), omit if successful
 ```
 
 #### Parallel mode (batch of items)
@@ -270,9 +266,6 @@ You are verifying Nightshift task "<task-name>" on a single item.
 ## Item Data (Row <N>)
 <all column values for this row as key: value pairs>
 
-## Dev Results
-<dev agent's returned results>
-
 ## State Update
 table_path: <shift-directory-path>/table.csv
 task_column: <task-name>
@@ -282,10 +275,9 @@ After verification, you MUST update your status in table.csv:
 - On pass: `flock -x <table_path> qsv edit -i <table_path> <task_column> <qsv_index> done`
 - On fail: `flock -x <table_path> qsv edit -i <table_path> <task_column> <qsv_index> failed`
 
-Check each validation criterion independently. Return your results in this format:
-- criteria: array of { criterion, status (pass/fail), reason }
-- overall_status: "pass" or "fail"
-- summary: brief overall assessment
+Check each validation criterion independently using your own tools. Return your results in this format:
+- overall_status: "PASS" or "FAIL"
+- summary: brief overall assessment explaining the result
 ```
 
 If the dev returned a `FAILED` status, skip QA — the dev agent has already written `failed` to `table.csv`.
@@ -298,7 +290,7 @@ After ALL dev agents in the batch return:
 2. For items with `failed` status: skip QA (the dev agent has already written the status)
 3. For all items with `qa` status: invoke QA agents for all successful items **concurrently via parallel Task tool calls in a single message** — each with the same prompt format as sequential mode but with different item data and `qsv_index` values. Each QA agent is responsible for writing its own status transition (`done` or `failed`).
 
-### 6. Update Progress and Report
+### 6. Update Progress
 
 After each batch (or each item in sequential mode), update the `## Progress` section in `manager.md`. Use `flock -x` prefixed `qsv` commands to derive counts:
 
@@ -321,14 +313,9 @@ flock -x table.csv qsv search --exact done --select <task-column> --invert-match
 - Count remaining items (not fully done and not failed) → Remaining
 - Total items (N) = `flock -x table.csv qsv count table.csv`
 
-After updating `manager.md`, output a progress report for the supervisor:
+Write these counts to the `## Progress` section in `manager.md`. This provides durable progress visibility if the session is interrupted.
 
-```
-Progress: M/N
-Compacted: true|false
-```
-
-Where M = items with all tasks `done`, N = total items. See the compaction detection section below for how to determine the `Compacted` value.
+**Do NOT output a progress report to the supervisor at this point.** Only output `Progress: M/N` and `Compacted: true|false` when yielding to the supervisor (see section 7).
 
 #### Compaction Detection
 
@@ -337,15 +324,22 @@ At the start of each batch (before step 3), verify that your context has not bee
 - The shift directory path
 - The current task being processed
 
-If any of these are missing or uncertain (i.e., you cannot confidently state them from your working memory), report `Compacted: true` in your progress output. This signals the supervisor to discard your session and start a fresh manager invocation.
+If any of these are missing or uncertain (i.e., you cannot confidently state them from your working memory), you MUST yield to the supervisor immediately. Output:
 
-If all key facts are intact, report `Compacted: false`.
+```
+Progress: M/N
+Compacted: true
+```
+
+Where M and N are the last known values from the `## Progress` section in `manager.md`. Then STOP — do not process any more batches. The supervisor will start a fresh manager session.
+
+If all key facts are intact, continue processing — do NOT output anything to the supervisor.
 
 ### 7. Loop
 
 #### Sequential mode
 
-Continue to the next item-task (step 3) until no more `todo` items remain.
+After processing an item-task (dev delegation, step improvements, QA), perform compaction detection. If compacted, yield to supervisor (see section 6). Otherwise, continue to the next item-task (step 3) until no more `todo` items remain.
 
 #### Parallel mode
 
@@ -357,13 +351,16 @@ After adjustment, apply the `max-batch-size` cap: if `max-batch-size` is set in 
 
 Then write the new batch size back to the `current-batch-size` field in the Shift Configuration section of `manager.md`. This persists the batch size for resume and provides visibility into the current state.
 
-Then loop back to step 3 to collect the next batch. Continue until no more `todo` items remain.
+Then perform compaction detection. If compacted, yield to supervisor (see section 6). Otherwise, loop back to step 3 to collect the next batch. Continue until no more `todo` items remain.
 
 ### 8. Completion
 
-When all items are processed, output a final summary:
+When all items are processed (no `todo` items remain), output a final summary for the supervisor:
 
 ```
+Progress: M/N
+Compacted: false
+
 ## Shift Complete
 
 **Shift:** <name>
@@ -373,6 +370,8 @@ When all items are processed, output a final summary:
 
 Suggest archiving with `/nightshift-archive <name>` if all items are done.
 ```
+
+Where M and N are from the final `## Progress` update in `manager.md`. Include `Compacted: false` so the supervisor knows this is a normal completion, not a compaction yield.
 
 ## CSV Operations
 
