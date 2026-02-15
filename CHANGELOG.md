@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.4] - 2026-02-15
+
+### Added
+
+- Add auto-release workflow and changelog
+
+Add a GitHub Actions workflow that generates release notes and creates a GitHub Release when a version tag (v*) is pushed. Include a git-cliff configuration (cliff.toml) tuned for the project's imperative-mood commit messages, and add an initial CHANGELOG.md generated from existing history. The workflow uses orhun/git-cliff-action and softprops/action-gh-release, updates the full changelog, and commits it back to the default branch (with [skip ci]). Also add OpenSpec design/proposal/specs/tasks for the auto-release change under openspec/changes/add-auto-release-generation.
+
 ## [0.1.3] - 2026-02-12
 
 ### Added
