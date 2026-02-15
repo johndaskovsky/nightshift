@@ -10,30 +10,30 @@
 
 Long-running unsupervised agent framework
 
-A batch processing framework for AI agents. Define a table of items, write task instructions, and let a three-agent system (manager, dev, QA) work through them autonomously with built-in retries, self-improvement, and independent verification.
+A batch processing framework for AI agents. Define a table of items, write task instructions, and let a two-agent system (manager, dev) work through them autonomously with built-in retries, self-improvement, and self-validation.
 
-Nightshift runs inside [OpenCode](https://opencode.ai/) as a set of custom agents, commands, and skills. There is no traditional source code -- the entire framework is defined through Markdown, CSV, YAML, and JSONC configuration files.
+Nightshift runs inside [OpenCode](https://opencode.ai/) as a set of custom agents, commands, and skills. It is distributed as a TypeScript CLI installer (`nightshift init` / `nightshift update`) that scaffolds agent and command files into target projects.
 
 ## How It Works
 
-A **shift** is a batch job. It contains a CSV table of items to process and one or more task definitions that describe what to do with each item. Three agents collaborate to execute the work:
+A **shift** is a batch job. It contains a CSV table of items to process and one or more task definitions that describe what to do with each item. Two agents collaborate to execute the work:
 
-- **Manager** -- reads shift state, picks the next item, delegates to dev and QA, updates statuses. The sole writer of `table.csv`.
-- **Dev** -- executes task steps on a single item, self-validates, retries up to 3 times, and refines task steps for future items.
-- **QA** -- independently verifies the dev's work against validation criteria. Strictly read-only.
+- **Manager** -- reads shift state, picks the next item, delegates to dev, applies step improvements from successful dev agents, and reports progress. Writes `manager.md` and task files; reads `table.csv` for status information.
+- **Dev** -- executes task steps on a single item, self-validates, retries up to 3 times, reports step improvement recommendations, and writes its own status to `table.csv` (`done` on success, `failed` on failure).
 
 Each item-task moves through a state machine:
 
 ```
-todo --> in_progress --> qa --> done
-                    \         /
-                     -> failed
+todo --> done
+    \
+     -> failed
 ```
 
 ## Prerequisites
 
 - [OpenCode](https://opencode.ai/) AI assistant
-- [qsv](https://github.com/dathere/qsv) CSV toolkit (optional but strongly recommended) -- install via `brew install qsv` or download from [GitHub releases](https://github.com/dathere/qsv/releases) for non-Homebrew platforms
+- [qsv](https://github.com/dathere/qsv) CSV toolkit (required) -- install via `brew install qsv` or download from [GitHub releases](https://github.com/dathere/qsv/releases) for non-Homebrew platforms
+- [flock](https://github.com/discoteq/flock) file locking utility (required) -- install via `brew install flock` or use the version bundled with `util-linux` on Linux
 
 ## Installation
 
@@ -101,9 +101,9 @@ The command asks you to describe what the agent should do, what tools it needs, 
 
 Steps use template variables that get substituted before execution. Three types are supported:
 
-- `{column_name}` -- row data from `table.csv` (e.g., `{url}`, `{page_title}`)
+- `{column_name}` -- item data from `table.csv` (e.g., `{url}`, `{page_title}`)
 - `{ENV:VAR_NAME}` -- values from the shift's `.env` file (e.g., `{ENV:BASE_URL}`, `{ENV:API_KEY}`)
-- `{SHIFT:FOLDER}` / `{SHIFT:NAME}` -- shift metadata (directory path and shift name)
+- `{SHIFT:FOLDER}` / `{SHIFT:NAME}` / `{SHIFT:TABLE}` -- shift metadata (directory path, shift name, and table file path)
 
 See [Template Variables](#template-variables) for details.
 
@@ -116,10 +116,10 @@ See [Template Variables](#template-variables) for details.
 Add rows with the metadata columns your tasks reference. The resulting `table.csv` looks like:
 
 ```csv
-row,url,page_title,create_page
-1,https://example.com/site1,Welcome,todo
-2,https://example.com/site2,About Us,todo
-3,https://example.com/site3,Contact,todo
+url,page_title,create_page
+https://example.com/site1,Welcome,todo
+https://example.com/site2,About Us,todo
+https://example.com/site3,Contact,todo
 ```
 
 Each task gets a status column initialized to `todo`.
@@ -130,7 +130,7 @@ Each task gets a status column initialized to `todo`.
 /nightshift-start my-batch-job
 ```
 
-The manager agent takes over: it reads the table, picks the next `todo` item, delegates to the dev agent, sends successful results to QA, updates statuses, and loops until everything is `done` or `failed`.
+The manager agent takes over: it reads the table, picks the next `todo` item, delegates to the dev agent, updates statuses, and loops until everything is `done` or `failed`.
 
 ### 5. Test a single task (optional)
 
@@ -138,7 +138,7 @@ The manager agent takes over: it reads the table, picks the next `todo` item, de
 /nightshift-test-task my-batch-job
 ```
 
-Runs one task on one row through both dev and QA agents **without modifying any state**. Useful for debugging task definitions before running a full shift.
+Runs one task on one item through the dev agent **without modifying any state**. Useful for debugging task definitions before running a full shift.
 
 ### 6. Archive a completed shift
 
@@ -156,7 +156,7 @@ Moves the shift to `.nightshift/archive/YYYY-MM-DD-my-batch-job/`.
 | `/nightshift-add-task <name>` | Add a task definition to an existing shift |
 | `/nightshift-update-table <name>` | Add rows, update metadata, or reset failed items |
 | `/nightshift-start <name>` | Begin or resume shift execution |
-| `/nightshift-test-task <name>` | Dry-run a single task on a single row |
+| `/nightshift-test-task <name>` | Dry-run a single task on a single item |
 | `/nightshift-archive <name>` | Move a completed shift to the archive |
 
 All commands accept a shift name as an argument, or prompt interactively if omitted.
@@ -208,13 +208,13 @@ The `parallel`, `current-batch-size`, and `max-batch-size` fields are optional. 
 Each row is an item. Metadata columns hold the data tasks need. Status columns (one per task) track progress.
 
 ```csv
-row,url,page_title,create_page,update_cms
-1,https://example.com/site1,Welcome,done,in_progress
-2,https://example.com/site2,About Us,todo,todo
-3,https://example.com/site3,Contact,todo,todo
+url,page_title,create_page,update_cms
+https://example.com/site1,Welcome,done,done
+https://example.com/site2,About Us,todo,todo
+https://example.com/site3,Contact,todo,todo
 ```
 
-Status values: `todo`, `in_progress`, `qa`, `done`, `failed`.
+Status values: `todo`, `done`, `failed`.
 
 ### Task files
 
@@ -230,27 +230,28 @@ Each task has three sections. Only the Steps section is modified during executio
 
 ### Item processing order
 
-The manager iterates rows in order, tasks in the order listed in `manager.md`. Tasks within a row are sequential -- task 2 cannot start until task 1 is `done`. A `failed` task blocks all subsequent tasks for that row.
+The manager iterates items in order, tasks in the order listed in `manager.md`. Tasks within an item are sequential -- task 2 cannot start until task 1 is `done`. A `failed` task blocks all subsequent tasks for that item.
 
 ### Dev agent retry loop
 
 The dev agent gets up to 3 attempts per item (1 initial + 2 retries). On each attempt it:
 
-1. Substitutes all template variables from the current row, environment, and shift metadata
+1. Substitutes all template variables from the current item, environment, and shift metadata
 2. Executes steps sequentially, stopping on failure
-3. Refines the Steps section based on what it learned
+3. Identifies step improvement recommendations
 4. Self-validates against the Validation criteria
 5. Retries from scratch if self-validation fails and attempts remain
+6. Writes its own status to `table.csv` (`done` on success, `failed` on failure)
 
-Step refinements persist to the task file, so subsequent items benefit from earlier learnings.
+Step improvement recommendations are reported back to the manager, which applies them to the task file. Only recommendations from successful dev executions are applied; failed executions' recommendations are discarded.
 
-### QA verification
+### Self-validation
 
-After a successful dev execution, the QA agent independently checks every validation criterion using read-only tools (file reads, grep, Playwright). It reports per-criterion pass/fail with specific evidence. All criteria must pass for `done`; any failure means `failed`.
+The dev agent validates its own work against the task's Validation criteria after each attempt. All criteria must pass for the item to be marked `done`. If validation fails and retry attempts remain, the dev agent retries from scratch. After exhausting all attempts, the item is marked `failed`.
 
 ### Resumability
 
-If a shift is interrupted, `/nightshift-start` picks up where it left off. The manager resets any stale `in_progress` or `qa` statuses back to `todo` on startup, then continues processing remaining items.
+If a shift is interrupted, `/nightshift-start` picks up where it left off. There are no transient states to recover from -- items are either `todo` (available for dev processing), `done`, or `failed`. On resume, `todo` items are dispatched to dev and `done`/`failed` items are skipped.
 
 ### Graceful degradation
 
@@ -258,7 +259,7 @@ A single item failure never stops the entire shift. The manager marks the failed
 
 ### Parallel execution
 
-By default, the manager processes one row at a time. To enable parallel processing, add `parallel: true` to the Shift Configuration section of `manager.md`:
+By default, the manager processes one item at a time. To enable parallel processing, add `parallel: true` to the Shift Configuration section of `manager.md`:
 
 ```markdown
 ## Shift Configuration
@@ -268,7 +269,7 @@ By default, the manager processes one row at a time. To enable parallel processi
 - parallel: true
 ```
 
-In parallel mode, the manager dispatches multiple rows concurrently for each task using adaptive batch sizing. Two optional fields control batch behavior:
+In parallel mode, the manager dispatches multiple items concurrently for each task using adaptive batch sizing. Two optional fields control batch behavior:
 
 | Field | Default | Description |
 |-------|---------|-------------|
@@ -289,7 +290,7 @@ In parallel mode, the manager dispatches multiple rows concurrently for each tas
 
 Both `current-batch-size` and `max-batch-size` are ignored when `parallel` is not `true`. Invalid values (non-positive or non-numeric) are treated as omitted.
 
-Parallelism applies only across rows for a single task. Tasks within a row remain strictly sequential per the task order.
+Parallelism applies only across items for a single task. Tasks within an item remain strictly sequential per the task order.
 
 ## Template Variables
 
@@ -323,15 +324,16 @@ API_KEY=sk-1234-abcd
 
 Shift `.env` files are gitignored via the `.nightshift/**/.env` pattern.
 
-### Shift placeholders: `{SHIFT:FOLDER}` / `{SHIFT:NAME}`
+### Shift placeholders: `{SHIFT:FOLDER}` / `{SHIFT:NAME}` / `{SHIFT:TABLE}`
 
-Reference shift-level metadata. Two variables are available:
+Reference shift-level metadata. Three variables are available:
 
 - `{SHIFT:FOLDER}` -- the shift directory path (e.g., `.nightshift/my-batch-job/`)
 - `{SHIFT:NAME}` -- the shift name (e.g., `my-batch-job`)
+- `{SHIFT:TABLE}` -- the full path to the shift's `table.csv` (e.g., `.nightshift/my-batch-job/table.csv`)
 
 ```markdown
-1. Save the output to {SHIFT:FOLDER}output/{row}.json
+1. Save the output to {SHIFT:FOLDER}output/{SHIFT:NAME}-output.json
 ```
 
 ### Error handling
@@ -342,18 +344,24 @@ All placeholders use fail-fast behavior. A missing column value, undefined envir
 
 | Agent | Write | Edit | Bash | Delegation | Playwright |
 |-------|-------|------|------|------------|------------|
-| Manager | yes | yes | denied | dev, qa only | no |
-| Dev | yes | yes | `mkdir` only | none | yes |
-| QA | no | no | denied | none | yes |
+| Manager | yes | yes | `qsv`, `flock` | dev only | no |
+| Dev | yes | yes | `mkdir`, `qsv`, `flock` | none | yes |
 
 ## Project Layout
 
 ```
 night-shift/
-  .nightshift/          # Active and archived shifts
+  src/                  # TypeScript CLI source (init, update commands)
+  bin/                  # CLI entry script
+  dist/                 # Compiled output (generated by build)
+  templates/
+    agents/             # Manager and dev agent instructions
+    commands/           # Slash command definitions
+  test/                 # Integration tests
+  .nightshift/          # Active and archived shifts (in target projects)
   .opencode/
-    agent/              # Manager, dev, and QA agent instructions
-    command/            # Slash command definitions
+    command/            # OpenSpec slash commands (this project)
+    skills/             # OpenSpec workflow skills (this project)
 ```
 
 ## License

@@ -33,7 +33,6 @@ Move a completed (or partially completed) shift to the archive directory with a 
    ```bash
    qsv search --exact todo --select <task-column> table.csv | qsv count
    qsv search --exact failed --select <task-column> table.csv | qsv count
-   qsv search --exact in_progress --select <task-column> table.csv | qsv count
    ```
 
    Warn the user:
@@ -41,7 +40,6 @@ Move a completed (or partially completed) shift to the archive directory with a 
    Warning: Shift has incomplete items:
    - X items with status "todo"
    - Y items with status "failed"
-   - Z items with status "in_progress"
    ```
    Use the **AskUserQuestion tool** to confirm:
    > "Archive anyway?"

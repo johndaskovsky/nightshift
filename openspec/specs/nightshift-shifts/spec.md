@@ -27,11 +27,11 @@ The system SHALL require shift names to be kebab-case identifiers (lowercase let
 - **THEN** the system SHALL reject the name and report that kebab-case is required
 
 ### Requirement: Manager file format
-The system SHALL use `manager.md` as the shift execution manifest. The file SHALL contain a Shift Configuration section, a Task Order section, and a Progress section. The Shift Configuration section SHALL support an optional `parallel` field, an optional `current-batch-size` field, and an optional `max-batch-size` field. The `current-batch-size` and `max-batch-size` fields SHALL only be meaningful when `parallel: true` is set.
+The system SHALL use `manager.md` as the shift execution manifest. The file SHALL contain a Shift Configuration section and a Task Order section. The Shift Configuration section SHALL support an optional `parallel` field, an optional `current-batch-size` field, and an optional `max-batch-size` field. The `current-batch-size` and `max-batch-size` fields SHALL only be meaningful when `parallel: true` is set.
 
 #### Scenario: Manager file structure
 - **WHEN** a manager.md file is read
-- **THEN** it SHALL contain a `## Shift Configuration` section with `name` and `created` fields (and optionally `parallel`, `current-batch-size`, and `max-batch-size`), a `## Task Order` section with a numbered list of task names, and a `## Progress` section with `Total items`, `Completed`, `Failed`, and `Remaining` counts
+- **THEN** it SHALL contain a `## Shift Configuration` section with `name` and `created` fields (and optionally `parallel`, `current-batch-size`, and `max-batch-size`), and a `## Task Order` section with a numbered list of task names
 
 #### Scenario: Task order references valid task files
 - **WHEN** the Task Order section lists task name "create_page"
@@ -74,15 +74,11 @@ The system SHALL use `manager.md` as the shift execution manifest. The file SHAL
 - **THEN** it SHALL update the `current-batch-size` field in the Shift Configuration section of `manager.md` to reflect the new batch size
 
 ### Requirement: Table file format
-The system SHALL use `table.csv` as the canonical data store for shift items. The CSV SHALL conform to RFC 4180 standard formatting to ensure compatibility with `qsv` and other CSV tools. The CSV SHALL contain a `row` column, metadata columns for item context, and one status column per task defined in the shift.
+The system SHALL use `table.csv` as the canonical data store for shift items. The CSV SHALL conform to RFC 4180 standard formatting to ensure compatibility with `qsv` and other CSV tools. The CSV SHALL contain metadata columns for item context and one status column per task defined in the shift.
 
 #### Scenario: Table structure with tasks
 - **WHEN** a shift has tasks "create_page" and "update_spreadsheet"
-- **THEN** `table.csv` SHALL contain columns `row`, any item metadata columns, `create_page` (status), and `update_spreadsheet` (status)
-
-#### Scenario: Row numbering
-- **WHEN** items are added to the table
-- **THEN** the `row` column SHALL contain sequential integers starting from 1
+- **THEN** `table.csv` SHALL contain any item metadata columns, `create_page` (status), and `update_spreadsheet` (status)
 
 #### Scenario: Initial status values
 - **WHEN** a new table is created with items
@@ -93,14 +89,14 @@ The system SHALL use `table.csv` as the canonical data store for shift items. Th
 - **THEN** the file SHALL conform to RFC 4180 CSV formatting: comma-delimited, optional double-quote escaping, CRLF or LF line endings, with a required header row
 
 ### Requirement: Table status values
-The system SHALL track item-task status using exactly five values: `todo`, `in_progress`, `qa`, `done`, `failed`.
+The system SHALL track item-task status using exactly three values: `todo`, `done`, `failed`.
 
 #### Scenario: Valid status transitions
 - **WHEN** an item-task status is updated
-- **THEN** it SHALL follow the transition path: `todo` → `in_progress` → `qa` → `done`, or `todo` → `in_progress` → `qa` → `failed`, or `failed` → `todo` (for re-queuing)
+- **THEN** it SHALL follow the transition path: `todo` → `done`, or `todo` → `failed`, or `failed` → `todo` (for re-queuing)
 
 #### Scenario: Invalid status value rejected
-- **WHEN** a status update attempts to set a value other than `todo`, `in_progress`, `qa`, `done`, or `failed`
+- **WHEN** a status update attempts to set a value other than `todo`, `done`, or `failed`
 - **THEN** the system SHALL reject the update
 
 ### Requirement: Shift archival
@@ -124,7 +120,3 @@ The system SHALL support resuming interrupted shifts by querying `table.csv` sta
 #### Scenario: Resume after interruption
 - **WHEN** a shift is started and `qsv search --exact todo --select <task-column>` returns matching rows
 - **THEN** the system SHALL process those items, skipping items with status `done`
-
-#### Scenario: Detect in-progress items on resume
-- **WHEN** a shift is resumed and `qsv search --exact in_progress --select <task-column>` or `qsv search --exact qa --select <task-column>` returns matching rows
-- **THEN** the system SHALL treat those items as needing re-processing (reset to `todo` using `qsv edit -i`) since the previous execution was interrupted

@@ -27,19 +27,19 @@ The manager agent SHALL determine batch size adaptively when parallel mode is en
 - **THEN** the first batch dispatched SHALL have a batch size of 2
 
 #### Scenario: Batch size increases on full success
-- **WHEN** all items in a completed batch have status `done` after QA
+- **WHEN** all items in a completed batch have status `done` after dev execution
 - **THEN** the manager SHALL double the batch size for the next batch
 
 #### Scenario: Batch size capped by max-batch-size on increase
-- **WHEN** all items in a completed batch have status `done` after QA and doubling the batch size would exceed `max-batch-size`
+- **WHEN** all items in a completed batch have status `done` after dev execution and doubling the batch size would exceed `max-batch-size`
 - **THEN** the manager SHALL set the batch size to `max-batch-size` for the next batch
 
 #### Scenario: Batch size increases without cap
-- **WHEN** all items in a completed batch have status `done` after QA and `max-batch-size` is omitted
+- **WHEN** all items in a completed batch have status `done` after dev execution and `max-batch-size` is omitted
 - **THEN** the manager SHALL double the batch size for the next batch with no upper bound
 
 #### Scenario: Batch size decreases on any failure
-- **WHEN** one or more items in a completed batch have status `failed` (after dev or QA)
+- **WHEN** one or more items in a completed batch have status `failed` after dev execution
 - **THEN** the manager SHALL halve the batch size for the next batch (rounded down)
 
 #### Scenario: Minimum batch size
@@ -71,38 +71,22 @@ The manager agent SHALL determine batch size adaptively when parallel mode is en
 - **THEN** the manager SHALL ignore both fields and process rows sequentially (batch size of 1)
 
 ### Requirement: Batch lifecycle
-The manager agent SHALL follow a defined lifecycle for each batch: dispatch all dev agents, wait for all to complete, collect and apply learnings, run QA on successful items (concurrently in parallel mode), then proceed to the next batch.
-
-#### Scenario: Batch dispatch phase
-- **WHEN** the manager begins a new batch
-- **THEN** it SHALL set all batch items to `in_progress` in `table.csv`, then dispatch dev agents for all batch items concurrently
+The manager agent SHALL follow a defined lifecycle for each batch: dispatch all dev agents, wait for all to complete, collect and apply learnings, then proceed to the next batch.
 
 #### Scenario: Batch collection phase
 - **WHEN** all dev agents in a batch have returned results
-- **THEN** the manager SHALL collect results from all dev agents before proceeding to QA or the next batch
+- **THEN** the manager SHALL collect results from all dev agents before proceeding to the next batch
 
 #### Scenario: Learning application between batches
 - **WHEN** the manager has collected results from a completed batch
 - **THEN** it SHALL review all dev agent recommendations, synthesize non-contradictory improvements, and apply a single coherent update to the task file's Steps section before dispatching the next batch
 
-#### Scenario: QA runs concurrently after batch
-- **WHEN** dev agents in a batch return successful results
-- **THEN** the manager SHALL set all successful items to `qa` status and dispatch QA agents for all successful items concurrently via parallel Task tool calls in a single message, then update each item's status to `done` or `failed` based on QA results
-
-#### Scenario: Failed dev items skip QA
-- **WHEN** a dev agent in a batch returns a failure result
-- **THEN** the manager SHALL set that item's status to `failed` and SHALL NOT dispatch QA for that item
-
 ### Requirement: Batch state on interrupt
-The manager agent SHALL set all batch items to `in_progress` before dispatching dev agents. If the shift is interrupted mid-batch, the existing stale status recovery logic SHALL handle re-processing.
-
-#### Scenario: All batch items marked in_progress before dispatch
-- **WHEN** the manager dispatches a batch of N items
-- **THEN** all N items SHALL have status `in_progress` in `table.csv` before any dev agent is invoked
+If the shift is interrupted mid-batch, the existing resume logic SHALL handle re-processing based on `table.csv` status values. Items that were being processed by dev agents but did not have their status updated remain `todo` and will be re-dispatched on resume.
 
 #### Scenario: Interrupted batch recovers on resume
 - **WHEN** a shift is resumed after an interruption during a parallel batch
-- **THEN** all `in_progress` items SHALL be reset to `todo` by the existing stale status recovery logic, and the entire batch SHALL be re-dispatched
+- **THEN** all items still in `todo` status SHALL be eligible for dispatch in the next batch
 
 ### Requirement: Row-level parallelism only
 The system SHALL only parallelize across rows for a single task. Different tasks within the same row SHALL remain strictly sequential per the task ordering rules.
@@ -114,7 +98,3 @@ The system SHALL only parallelize across rows for a single task. Different tasks
 #### Scenario: Sequential across tasks per row
 - **WHEN** a row has tasks "create_page" and "update_spreadsheet" in order
 - **THEN** "update_spreadsheet" SHALL NOT begin for that row until "create_page" is `done`, regardless of parallel mode
-
-#### Scenario: QA runs concurrently in parallel mode
-- **WHEN** a batch of dev agents completes
-- **THEN** the manager SHALL dispatch QA agents for all successful items concurrently via parallel Task tool calls in a single message

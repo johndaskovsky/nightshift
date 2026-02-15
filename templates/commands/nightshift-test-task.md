@@ -1,5 +1,5 @@
 ---
-description: Run a single Nightshift task on a single table row for testing
+description: Run a single Nightshift task on a single table item for testing
 ---
 
 Execute a single task on one item for testing purposes — without modifying the table state.
@@ -16,20 +16,20 @@ Execute a single task on one item for testing purposes — without modifying the
 
 2. **Select the task**
 
-   List task columns using `qsv headers --just-names table.csv` and exclude non-task columns (`row` and metadata columns — task columns are those with status values like `todo`, `done`, `failed`). Alternatively, list `.md` files excluding `manager.md` in the shift directory.
+   List task columns using `qsv headers --just-names table.csv` and exclude non-task columns (metadata columns — task columns are those with status values like `todo`, `done`, `failed`). Alternatively, list `.md` files excluding `manager.md` in the shift directory.
    - If one task exists, auto-select it
    - If multiple tasks exist, use the **AskUserQuestion tool** to let the user pick
 
-3. **Select the row**
+3. **Select the item**
 
-   Determine the valid row range using `qsv count table.csv`. Use the **AskUserQuestion tool** to ask:
-   > "Which row do you want to test? Enter a row number (1-N)."
+   Determine the valid item range using `qsv count table.csv`. Use the **AskUserQuestion tool** to ask:
+   > "Which item do you want to test? Enter an item number (1-N)."
 
-   Show a preview of the row's metadata using `qsv slice --index <qsv_index> table.csv` (where `qsv_index = row_number - 1`) to help them choose.
+   Show a preview of the item's metadata using `qsv slice --index <qsv_index> table.csv` (where `qsv_index = item_number - 1`) to help them choose.
 
 4. **Execute the task (dev agent)**
 
-   Extract the row data using `qsv slice --index <qsv_index> table.csv` and specific columns with `qsv select` as needed.
+   Extract the item data using `qsv slice --index <qsv_index> table.csv` and specific columns with `qsv select` as needed.
 
    Use the **Task tool** to invoke the `nightshift-dev` subagent with:
    ```
@@ -42,40 +42,21 @@ Execute a single task on one item for testing purposes — without modifying the
    ## Task File
    <full contents of task-name.md>
 
-   ## Item Data (Row <N>)
-   <all column values for this row>
+   ## Item Data (Index <qsv_index>)
+   <all column values for this item>
 
    Execute the steps and return structured results.
    ```
 
-5. **Verify the task (qa agent)**
-
-   Use the **Task tool** to invoke the `nightshift-qa` subagent with:
-   ```
-   You are verifying Nightshift task "<task-name>" on a single item FOR TESTING.
-
-   ## Task Validation Criteria
-   <Validation section from task file>
-
-   ## Item Data (Row <N>)
-   <all column values>
-
-   ## Dev Results
-   <dev agent's returned results>
-
-   Check each criterion and return structured results.
-   ```
-
-6. **Display results (without updating table)**
+5. **Display results (without updating table)**
 
    ```
-   ## Test Results: <task-name> on Row <N>
+   ## Test Results: <task-name> on Item <N>
 
    ### Dev Execution
-   <step-by-step results from dev agent>
-
-   ### QA Verification
-   <per-criterion results from qa agent>
+   **Status:** <SUCCESS / FAILED (step N) / FAILED (validation)>
+   **Recommendations:** <step improvements from dev agent, or "None">
+   **Error:** <error details if failed, omit if successful>
 
    ### Overall: PASS / FAIL
 
@@ -85,6 +66,5 @@ Execute a single task on one item for testing purposes — without modifying the
 **Guardrails**
 - NEVER modify table.csv during a test run
 - NEVER modify manager.md during a test run
-- Always run both dev and qa agents to get the full picture
 - Display detailed results so the user can debug task definitions
 - Include the "test run only" note in output

@@ -25,11 +25,11 @@ The system SHALL provide a `nightshift init` command that creates the required d
 - **THEN** the system SHALL NOT delete or modify existing non-Nightshift files in those directories
 
 ### Requirement: Init command generates agent files
-The system SHALL write the three Nightshift agent definition files from bundled templates during `nightshift init`.
+The system SHALL write the two Nightshift agent definition files from bundled templates during `nightshift init`.
 
 #### Scenario: Agent files are written
 - **WHEN** `nightshift init` completes successfully
-- **THEN** the following files SHALL exist with content matching the bundled templates: `.opencode/agent/nightshift-manager.md`, `.opencode/agent/nightshift-dev.md`, `.opencode/agent/nightshift-qa.md`
+- **THEN** the following files SHALL exist with content matching the bundled templates: `.opencode/agent/nightshift-manager.md`, `.opencode/agent/nightshift-dev.md`
 
 #### Scenario: Agent files overwrite previous Nightshift agents
 - **WHEN** `nightshift init` runs and `.opencode/agent/nightshift-manager.md` already exists from a prior installation
@@ -47,11 +47,11 @@ The system SHALL write the six Nightshift slash command files from bundled templ
 - **THEN** the system SHALL overwrite them with current template versions
 
 ### Requirement: Init command summary output
-The system SHALL display a summary of all actions performed after `nightshift init` completes.
+The system SHALL display a summary of all actions performed after `nightshift init` completes. The summary SHALL include a dependencies section that actively verifies whether `qsv` and `flock` are installed and displays their status with install instructions for any that are missing.
 
 #### Scenario: Successful init displays summary
 - **WHEN** `nightshift init` completes without errors
-- **THEN** the system SHALL print a list of created/updated files and a next-steps message suggesting the user open OpenCode and run `/nightshift-create`
+- **THEN** the system SHALL print a list of created/updated files, a `--- Dependencies ---` section showing the availability of `qsv` and `flock` (with install instructions for any that are missing), and a next-steps message suggesting the user open OpenCode and run `/nightshift-create`
 
 #### Scenario: Init with errors displays partial summary
 - **WHEN** `nightshift init` encounters a non-fatal error (e.g., file write fails due to permissions)
@@ -62,7 +62,7 @@ The system SHALL provide a `nightshift update` command that regenerates all fram
 
 #### Scenario: Update overwrites agent files
 - **WHEN** a user runs `nightshift update`
-- **THEN** the system SHALL overwrite all three agent files in `.opencode/agent/` with the current bundled templates
+- **THEN** the system SHALL overwrite both agent files in `.opencode/agent/` with the current bundled templates
 
 #### Scenario: Update overwrites command files
 - **WHEN** a user runs `nightshift update`
@@ -79,12 +79,23 @@ The system SHALL produce identical results when `nightshift update` is run multi
 - **WHEN** a user runs `nightshift update` and `.nightshift/` contains active shift directories with `table.csv` data
 - **THEN** the system SHALL NOT read, modify, or delete any files inside `.nightshift/`
 
+### Requirement: Update command summary output
+The system SHALL display a summary of all actions performed after `nightshift update` completes. The summary SHALL include a dependencies section that actively verifies whether `qsv` and `flock` are installed and displays their status with install instructions for any that are missing.
+
+#### Scenario: Successful update displays summary with dependencies
+- **WHEN** `nightshift update` completes without errors
+- **THEN** the system SHALL print a list of updated files and a `--- Dependencies ---` section showing the availability of `qsv` and `flock` (with install instructions for any that are missing)
+
 ### Requirement: Non-interactive mode
-The system SHALL support `--force` and `--yes` flags on both `init` and `update` commands to skip all confirmation prompts.
+The system SHALL support `--force` and `--yes` flags on the `init` command to skip confirmation prompts. The `update` command SHALL support `--yes` to skip confirmation. The `update` command always overwrites framework files, so `--force` is not applicable.
 
 #### Scenario: Init with --force skips all prompts
 - **WHEN** a user runs `nightshift init --force`
 - **THEN** the system SHALL proceed with all operations using default choices without prompting for user input
+
+#### Scenario: Init with --yes skips confirmation
+- **WHEN** a user runs `nightshift init --yes`
+- **THEN** the system SHALL proceed without asking for confirmation
 
 #### Scenario: Update with --yes skips confirmation
 - **WHEN** a user runs `nightshift update --yes`
@@ -110,7 +121,7 @@ The system SHALL bundle all Nightshift agent and command templates inside the np
 
 #### Scenario: Templates directory structure
 - **WHEN** the npm package is inspected
-- **THEN** `templates/` SHALL contain `agents/nightshift-manager.md`, `agents/nightshift-dev.md`, `agents/nightshift-qa.md`, `commands/nightshift-create.md`, `commands/nightshift-start.md`, `commands/nightshift-archive.md`, `commands/nightshift-add-task.md`, `commands/nightshift-test-task.md`, and `commands/nightshift-update-table.md`
+- **THEN** `templates/` SHALL contain `agents/nightshift-manager.md`, `agents/nightshift-dev.md`, `commands/nightshift-create.md`, `commands/nightshift-start.md`, `commands/nightshift-archive.md`, `commands/nightshift-add-task.md`, `commands/nightshift-test-task.md`, and `commands/nightshift-update-table.md`
 
 #### Scenario: Templates are resolvable at runtime
 - **WHEN** the CLI executes `init` or `update`
@@ -120,7 +131,7 @@ The system SHALL bundle all Nightshift agent and command templates inside the np
 The system SHALL compile TypeScript source to JavaScript using a build step before publishing.
 
 #### Scenario: Build produces dist output
-- **WHEN** `npm run build` is executed
+- **WHEN** `pnpm run build` is executed
 - **THEN** the system SHALL compile all TypeScript files from `src/` to `dist/` targeting ES2022 with NodeNext module resolution
 
 #### Scenario: Build is required before publish
