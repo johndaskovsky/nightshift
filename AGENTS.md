@@ -78,27 +78,28 @@ night-shift/
 
 ### Three-agent system with strict role separation
 
-- **Manager** (`nightshift-manager`): Sole orchestrator. Reads state, delegates to dev/qa via Task tool, writes `table.csv`. Never executes task steps directly. Can only delegate to `nightshift-dev` and `nightshift-qa`.
-- **Dev** (`nightshift-dev`): Executor. Follows task steps, self-improves step definitions, self-validates, retries up to 3 attempts. Has Playwright access and can create directories. Cannot delegate.
-- **QA** (`nightshift-qa`): Verifier. Read-only — no write/edit permissions. Checks validation criteria independently. Has Playwright access for verification. Cannot delegate.
+- **Manager** (`nightshift-manager`): Sole orchestrator. Reads state, delegates to dev/qa via Task tool, writes `manager.md` and task files. Reads `table.csv` for status information but does not write status transitions. Applies step improvements only from successful dev agents. Never executes task steps directly. Can only delegate to `nightshift-dev` and `nightshift-qa`.
+- **Dev** (`nightshift-dev`): Executor. Follows task steps, self-validates, retries up to 3 attempts, reports step improvement recommendations. Writes its own status to `table.csv` (`qa` on success, `failed` on failure) via `flock -x` qsv. Has Playwright access and can create directories. Cannot delegate.
+- **QA** (`nightshift-qa`): Verifier. Checks validation criteria independently. Writes its own status to `table.csv` (`done` on pass, `failed` on fail) via `flock -x` qsv. Has Playwright access for verification. Cannot delegate.
 
 ### Item state machine
 
 ```
-todo → in_progress → qa → done
-                  ↘       ↗
-                   failed
+todo → qa → done
+    ↘      ↗
+     failed
 ```
 
-Status values use snake_case: `todo`, `in_progress`, `qa`, `done`, `failed`.
+Status values use snake_case: `todo`, `qa`, `done`, `failed`.
 
 ### Key architectural rules
 
 - Each agent invocation gets **fresh context** (no accumulated state).
-- The manager is the **sole writer** of `table.csv`.
-- The dev agent may only modify the Steps section of task files.
+- The manager is the **sole writer** of `manager.md` and task files — it does not write status transitions to `table.csv`.
+- Dev and QA agents **write their own status** to `table.csv` via `flock -x` qsv commands.
+- The dev agent reports step improvement recommendations but never edits task files directly — the manager applies improvements from successful dev agents only.
 - Never stop the entire shift for a single item failure (graceful degradation).
-- On startup, reset stale `in_progress` and `qa` statuses back to `todo`.
+- No transient states to recover — `qa` is a durable state dispatched to QA on resume.
 
 ## Code Style Guidelines
 
@@ -170,7 +171,7 @@ The system SHALL <normative statement>.
 - **Bounded retry**: Dev agent retries up to 3 total attempts (1 initial + 2 retries).
 - **Graceful degradation**: Never halt the batch for a single item failure.
 - **Structured error reporting**: Use explicit `FAILED (step N)` or `FAILED (validation)` status.
-- **Stale state recovery**: On startup, reset `in_progress`/`qa` items back to `todo`.
+- **Durable resume**: No transient states — `qa` items are dispatched to QA on resume, not reset.
 - **Confirmation for destructive ops**: Use `AskUserQuestion` before archiving incomplete shifts.
 
 ### Git workflow
@@ -184,8 +185,8 @@ The system SHALL <normative statement>.
 
 | Agent | write | edit | bash | task delegation | playwright |
 |-------|-------|------|------|-----------------|------------|
-| Manager | yes | yes | denied | dev, qa only | no |
-| Dev | yes | yes | `mkdir*` only | none | yes |
-| QA | no | no | denied | none | yes |
+| Manager | yes | yes | `qsv*`, `flock*` | dev, qa only | no |
+| Dev | yes | yes | `mkdir*`, `qsv*`, `flock*` | none | yes |
+| QA | no | no | `qsv*`, `flock*` | none | yes |
 
-Global bash allowlist: `mkdir*`, `test*`, `cat*`, `head*`, `xargs*`, `curl*`, `openspec list*`. All others require confirmation.
+Global bash allowlist: `mkdir*`, `test*`, `cat*`, `head*`, `xargs*`, `curl*`, `flock*`, `openspec list*`. All others require confirmation.

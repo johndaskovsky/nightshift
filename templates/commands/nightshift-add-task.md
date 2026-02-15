@@ -29,7 +29,7 @@ Add a new task file to a shift and update the table with a corresponding status 
 
 3. **Check for task name conflicts**
 
-   If a file `<task-name>.md` already exists in the shift directory, report the conflict and suggest a different name. Use `qsv headers --just-names table.csv` to also check if a column with this name already exists in the table.
+   If a file `<task-name>.md` already exists in the shift directory, report the conflict and suggest a different name. Use `flock -x table.csv qsv headers --just-names table.csv` to also check if a column with this name already exists in the table.
 
 4. **Create the task file**
 
@@ -54,10 +54,10 @@ Add a new task file to a shift and update the table with a corresponding status 
 
 5. **Update table.csv**
 
-   Add a new status column for this task using `qsv enum`:
+   Add a new status column for this task using `flock -x` prefixed `qsv enum`:
 
    ```bash
-   qsv enum --constant todo --new-column <task-name> table.csv > table_tmp.csv && mv table_tmp.csv table.csv
+   flock -x table.csv qsv enum --constant todo --new-column <task-name> table.csv > table_tmp.csv && mv table_tmp.csv table.csv
    ```
 
    This adds a column with the task name as header, initialized to `todo` for all existing rows. If the table is empty (header only), the column header is still added.

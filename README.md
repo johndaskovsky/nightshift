@@ -18,22 +18,23 @@ Nightshift runs inside [OpenCode](https://opencode.ai/) as a set of custom agent
 
 A **shift** is a batch job. It contains a CSV table of items to process and one or more task definitions that describe what to do with each item. Three agents collaborate to execute the work:
 
-- **Manager** -- reads shift state, picks the next item, delegates to dev and QA, updates statuses. The sole writer of `table.csv`.
-- **Dev** -- executes task steps on a single item, self-validates, retries up to 3 times, and refines task steps for future items.
-- **QA** -- independently verifies the dev's work against validation criteria. Strictly read-only.
+- **Manager** -- reads shift state, picks the next item, delegates to dev and QA, applies step improvements from successful dev agents, and reports progress. Writes `manager.md` and task files; reads `table.csv` for status information.
+- **Dev** -- executes task steps on a single item, self-validates, retries up to 3 times, reports step improvement recommendations, and writes its own status to `table.csv` (`qa` on success, `failed` on failure).
+- **QA** -- independently verifies the dev's work against validation criteria and writes its own status to `table.csv` (`done` on pass, `failed` on fail).
 
 Each item-task moves through a state machine:
 
 ```
-todo --> in_progress --> qa --> done
-                    \         /
-                     -> failed
+todo --> qa --> done
+    \        /
+     -> failed
 ```
 
 ## Prerequisites
 
 - [OpenCode](https://opencode.ai/) AI assistant
-- [qsv](https://github.com/dathere/qsv) CSV toolkit (optional but strongly recommended) -- install via `brew install qsv` or download from [GitHub releases](https://github.com/dathere/qsv/releases) for non-Homebrew platforms
+- [qsv](https://github.com/dathere/qsv) CSV toolkit (required) -- install via `brew install qsv` or download from [GitHub releases](https://github.com/dathere/qsv/releases) for non-Homebrew platforms
+- [flock](https://github.com/discoteq/flock) file locking utility (required) -- install via `brew install flock` or use the version bundled with `util-linux` on Linux
 
 ## Installation
 
@@ -103,7 +104,7 @@ Steps use template variables that get substituted before execution. Three types 
 
 - `{column_name}` -- row data from `table.csv` (e.g., `{url}`, `{page_title}`)
 - `{ENV:VAR_NAME}` -- values from the shift's `.env` file (e.g., `{ENV:BASE_URL}`, `{ENV:API_KEY}`)
-- `{SHIFT:FOLDER}` / `{SHIFT:NAME}` -- shift metadata (directory path and shift name)
+- `{SHIFT:FOLDER}` / `{SHIFT:NAME}` / `{SHIFT:TABLE}` -- shift metadata (directory path, shift name, and table file path)
 
 See [Template Variables](#template-variables) for details.
 
@@ -209,12 +210,12 @@ Each row is an item. Metadata columns hold the data tasks need. Status columns (
 
 ```csv
 row,url,page_title,create_page,update_cms
-1,https://example.com/site1,Welcome,done,in_progress
+1,https://example.com/site1,Welcome,done,qa
 2,https://example.com/site2,About Us,todo,todo
 3,https://example.com/site3,Contact,todo,todo
 ```
 
-Status values: `todo`, `in_progress`, `qa`, `done`, `failed`.
+Status values: `todo`, `qa`, `done`, `failed`.
 
 ### Task files
 
@@ -238,19 +239,20 @@ The dev agent gets up to 3 attempts per item (1 initial + 2 retries). On each at
 
 1. Substitutes all template variables from the current row, environment, and shift metadata
 2. Executes steps sequentially, stopping on failure
-3. Refines the Steps section based on what it learned
+3. Identifies step improvement recommendations
 4. Self-validates against the Validation criteria
 5. Retries from scratch if self-validation fails and attempts remain
+6. Writes its own status to `table.csv` (`qa` on success, `failed` on failure)
 
-Step refinements persist to the task file, so subsequent items benefit from earlier learnings.
+Step improvement recommendations are reported back to the manager, which applies them to the task file. Only recommendations from successful dev executions are applied; failed executions' recommendations are discarded.
 
 ### QA verification
 
-After a successful dev execution, the QA agent independently checks every validation criterion using read-only tools (file reads, grep, Playwright). It reports per-criterion pass/fail with specific evidence. All criteria must pass for `done`; any failure means `failed`.
+After a successful dev execution, the QA agent independently checks every validation criterion using read-only tools (file reads, grep, Playwright). It reports per-criterion pass/fail with specific evidence. All criteria must pass for `done`; any failure means `failed`. The QA agent writes its own status to `table.csv`.
 
 ### Resumability
 
-If a shift is interrupted, `/nightshift-start` picks up where it left off. The manager resets any stale `in_progress` or `qa` statuses back to `todo` on startup, then continues processing remaining items.
+If a shift is interrupted, `/nightshift-start` picks up where it left off. There are no transient states to recover from -- items are either `todo` (available for dev processing), `qa` (awaiting QA verification), `done`, or `failed`. On resume, `todo` items are dispatched to dev, `qa` items are dispatched to QA, and `done`/`failed` items are skipped.
 
 ### Graceful degradation
 
@@ -323,12 +325,13 @@ API_KEY=sk-1234-abcd
 
 Shift `.env` files are gitignored via the `.nightshift/**/.env` pattern.
 
-### Shift placeholders: `{SHIFT:FOLDER}` / `{SHIFT:NAME}`
+### Shift placeholders: `{SHIFT:FOLDER}` / `{SHIFT:NAME}` / `{SHIFT:TABLE}`
 
-Reference shift-level metadata. Two variables are available:
+Reference shift-level metadata. Three variables are available:
 
 - `{SHIFT:FOLDER}` -- the shift directory path (e.g., `.nightshift/my-batch-job/`)
 - `{SHIFT:NAME}` -- the shift name (e.g., `my-batch-job`)
+- `{SHIFT:TABLE}` -- the full path to the shift's `table.csv` (e.g., `.nightshift/my-batch-job/table.csv`)
 
 ```markdown
 1. Save the output to {SHIFT:FOLDER}output/{row}.json
@@ -342,9 +345,9 @@ All placeholders use fail-fast behavior. A missing column value, undefined envir
 
 | Agent | Write | Edit | Bash | Delegation | Playwright |
 |-------|-------|------|------|------------|------------|
-| Manager | yes | yes | denied | dev, qa only | no |
-| Dev | yes | yes | `mkdir` only | none | yes |
-| QA | no | no | denied | none | yes |
+| Manager | yes | yes | `qsv`, `flock` | dev, qa only | no |
+| Dev | yes | yes | `mkdir`, `qsv`, `flock` | none | yes |
+| QA | no | no | `qsv`, `flock` | none | yes |
 
 ## Project Layout
 
