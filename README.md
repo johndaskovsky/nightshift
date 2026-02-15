@@ -192,13 +192,6 @@ Tracks task execution order and progress. Updated automatically by the manager a
 
 1. create_page
 2. update_cms
-
-## Progress
-
-- Total items: 3
-- Completed: 1
-- Failed: 0
-- Remaining: 2
 ```
 
 The `parallel`, `current-batch-size`, and `max-batch-size` fields are optional. See [Parallel Execution](#parallel-execution) for details.
