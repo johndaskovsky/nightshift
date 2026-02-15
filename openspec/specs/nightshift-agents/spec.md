@@ -50,11 +50,19 @@ The dev agent SHALL write its own status transitions to `table.csv` using `flock
 - **THEN** it SHALL write `failed` status to `table.csv` using `flock -x <table_path> qsv edit -i <table_path> <task_column> <qsv_index> failed`
 
 ### Requirement: Dev agent role
-The system SHALL define a `nightshift-dev` subagent that executes task steps on a single table item. The dev agent SHALL receive the task steps, item metadata, shift metadata, environment variables (if a `.env` file exists), and tool configuration from the manager. After execution, the dev agent SHALL run self-validation against the Validation criteria, retry up to 2 times if self-validation fails (refining its approach in-memory across retries), and report step improvement recommendations to the manager.
+The system SHALL define a `nightshift-dev` subagent that executes task steps on a single table item. The dev agent SHALL receive the task steps, item metadata, shift metadata, environment variables (if a `.env` file exists), tool configuration, the table path, the task column name, and the qsv row index from the manager. After execution, the dev agent SHALL run self-validation against the Validation criteria, retry up to 2 times if self-validation fails (refining its approach in-memory across retries), report step improvement recommendations to the manager, and write its own status transition to `table.csv` using `flock -x <table_path> qsv edit -i`.
 
 #### Scenario: Dev executes task steps
 - **WHEN** the dev agent is invoked for task "create_page" on item row 5
-- **THEN** it SHALL follow the Steps section of the task file, substituting `{column_name}` placeholders with values from row 5's metadata columns, `{ENV:VAR_NAME}` placeholders with values from the shift's `.env` file, and `{SHIFT:FOLDER}` and `{SHIFT:NAME}` placeholders with the shift directory path and shift name respectively
+- **THEN** it SHALL follow the Steps section of the task file, substituting `{column_name}` placeholders with values from row 5's metadata columns, `{ENV:VAR_NAME}` placeholders with values from the shift's `.env` file, and `{SHIFT:FOLDER}`, `{SHIFT:NAME}`, and `{SHIFT:TABLE}` placeholders with the shift directory path, shift name, and table file path respectively
+
+#### Scenario: Dev writes done status on success
+- **WHEN** the dev agent completes execution with `overall_status: "SUCCESS"` (self-validation passed)
+- **THEN** it SHALL write the item-task status to `done` in `table.csv` using `flock -x <table_path> qsv edit -i <table_path> <task_column> <qsv_index> done`
+
+#### Scenario: Dev writes failed status on failure
+- **WHEN** the dev agent completes execution with `overall_status` containing `FAILED` (after exhausting retries)
+- **THEN** it SHALL write the item-task status to `failed` in `table.csv` using `flock -x <table_path> qsv edit -i <table_path> <task_column> <qsv_index> failed`
 
 #### Scenario: Dev has scoped tool access
 - **WHEN** the dev agent is invoked with task configuration listing `tools: playwright, google_workspace`
@@ -62,7 +70,7 @@ The system SHALL define a `nightshift-dev` subagent that executes task steps on 
 
 #### Scenario: Dev returns structured results
 - **WHEN** the dev agent completes execution
-- **THEN** it SHALL return to the manager: `overall_status`, `recommendations`, and `error` (if failed) — verbose fields (per-step outcomes, captured values, self-validation details, attempt count) are used internally but not included in the output to the manager
+- **THEN** it SHALL return to the manager: step-by-step outcomes, captured values, any error details, self-validation results, attempt count, and step improvement recommendations
 
 #### Scenario: Dev processes one item at a time
 - **WHEN** the dev agent is invoked
@@ -155,13 +163,13 @@ The dev agent's result format returned to the manager SHALL include only the fie
 - **WHEN** the dev agent returns results to the manager
 - **THEN** the results SHALL NOT include `Steps`, `Captured Values`, `Self-Validation`, or `Attempts` sections
 
-### Requirement: Manager agent qsv bash permissions
-The manager agent SHALL have `qsv*` commands allowed in its bash permission configuration, as an exception to the default deny-all bash policy.
+### Requirement: Manager agent qsv and flock bash permissions
+The manager agent SHALL have `qsv*` and `flock*` commands allowed in its bash permission configuration, as an exception to the default deny-all bash policy.
 
-#### Scenario: Manager can execute qsv commands
-- **WHEN** the manager agent needs to read or modify `table.csv`
-- **THEN** it SHALL execute `qsv` subcommands via the Bash tool without permission denial
+#### Scenario: Manager can execute flock-prefixed qsv commands
+- **WHEN** the manager agent needs to read `table.csv`
+- **THEN** it SHALL execute `flock -x <table_path> qsv` subcommands via the Bash tool without permission denial
 
-#### Scenario: Manager cannot execute non-qsv bash commands
-- **WHEN** the manager agent attempts to run a bash command that does not match the `qsv*` pattern
+#### Scenario: Manager cannot execute non-qsv non-flock bash commands
+- **WHEN** the manager agent attempts to run a bash command that does not match the `qsv*` or `flock*` patterns
 - **THEN** the command SHALL be denied by the permission policy

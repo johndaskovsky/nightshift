@@ -47,11 +47,11 @@ The system SHALL write the six Nightshift slash command files from bundled templ
 - **THEN** the system SHALL overwrite them with current template versions
 
 ### Requirement: Init command summary output
-The system SHALL display a summary of all actions performed after `nightshift init` completes.
+The system SHALL display a summary of all actions performed after `nightshift init` completes. The summary SHALL include a note about required dependencies (`qsv` and `flock`) that must be installed separately.
 
 #### Scenario: Successful init displays summary
 - **WHEN** `nightshift init` completes without errors
-- **THEN** the system SHALL print a list of created/updated files and a next-steps message suggesting the user open OpenCode and run `/nightshift-create`
+- **THEN** the system SHALL print a list of created/updated files, a note that `qsv` and `flock` are required dependencies (with installation instructions), and a next-steps message suggesting the user open OpenCode and run `/nightshift-create`
 
 #### Scenario: Init with errors displays partial summary
 - **WHEN** `nightshift init` encounters a non-fatal error (e.g., file write fails due to permissions)
