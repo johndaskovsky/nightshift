@@ -1,0 +1,48 @@
+[changelog]
+header = """
+# Changelog\n
+All notable changes to this project will be documented in this file.\n
+"""
+body = """
+{%- macro remote_url() -%}
+  https://github.com/johndaskovsky/nightshift
+{%- endmacro -%}
+
+{% if version -%}
+    ## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else -%}
+    ## [Unreleased]
+{% endif -%}
+
+{% for group, commits in commits | group_by(attribute="group") %}
+    ### {{ group | striptags | trim | upper_first }}
+    {% for commit in commits %}
+        - {{ commit.message | upper_first | trim }}\
+    {% endfor %}
+{% endfor %}\n
+"""
+trim = true
+footer = ""
+
+[git]
+conventional_commits = false
+filter_unconventional = false
+commit_parsers = [
+    { message = "^Add", group = "Added" },
+    { message = "^Integrate", group = "Added" },
+    { message = "^Support", group = "Added" },
+    { message = "^Update", group = "Changed" },
+    { message = "^Switch", group = "Changed" },
+    { message = "^Refactor", group = "Changed" },
+    { message = "^Rename", group = "Changed" },
+    { message = "^Fix", group = "Fixed" },
+    { message = "^Correct", group = "Fixed" },
+    { message = "^Remove", group = "Removed" },
+    { message = "^Merge", skip = true },
+    { message = "^\\d+\\.\\d+", skip = true },
+    { message = "\\[skip ci\\]", skip = true },
+    { message = "^chore\\(release\\)", skip = true },
+    { message = ".*", group = "Other" },
+]
+tag_pattern = "v[0-9].*"
+sort_commits = "oldest"
