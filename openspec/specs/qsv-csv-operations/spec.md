@@ -7,7 +7,7 @@ The system SHALL require [qsv](https://github.com/dathere/qsv) as the CLI tool f
 
 #### Scenario: qsv is not available
 - **WHEN** the `qsv` binary is not found on the system PATH
-- **THEN** the system SHALL display an error with installation instructions (`brew install qsv`) during pre-flight checks and SHALL block shift execution
+- **THEN** the CLI installer (`nightshift init` and `nightshift update`) SHALL have warned the user with installation instructions (`brew install qsv`) during setup, and agent bash commands that invoke `qsv` SHALL fail with system-level errors
 
 ### Requirement: Cell update operations
 The system SHALL update individual cell values in `table.csv` using `flock -x <table_path> qsv edit` with the `-i` (in-place) flag. The column SHALL be specified by name and the row by 0-based index. All cell updates SHALL be wrapped with `flock -x` for exclusive file locking.

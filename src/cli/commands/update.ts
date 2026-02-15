@@ -6,6 +6,7 @@ import {
   writeAgentFiles,
   writeCommandFiles,
 } from "../../core/scaffolder.js";
+import { checkDependencies } from "../../core/dependencies.js";
 
 interface UpdateOptions {
   yes?: boolean;
@@ -83,6 +84,24 @@ export function createUpdateCommand(): Command {
         for (const w of warnings) {
           console.log(chalk.yellow(`  ! ${w}`));
         }
+      }
+
+      console.log(chalk.bold("\n--- Dependencies ---\n"));
+
+      const deps = checkDependencies();
+
+      if (deps.qsv.available) {
+        console.log(`  ${chalk.green("\u2713")} qsv`);
+      } else {
+        console.log(`  ${chalk.yellow("!")} qsv is not installed.`);
+        console.log(`    Install: ${chalk.cyan("brew install qsv")} (https://github.com/dathere/qsv)`);
+      }
+
+      if (deps.flock.available) {
+        console.log(`  ${chalk.green("\u2713")} flock`);
+      } else {
+        console.log(`  ${chalk.yellow("!")} flock is not installed.`);
+        console.log(`    Install: ${chalk.cyan("brew install flock")} (https://github.com/discoteq/flock)`);
       }
 
       console.log(chalk.bold("\nUpdate complete.\n"));

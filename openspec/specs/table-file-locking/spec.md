@@ -12,8 +12,8 @@ The system SHALL require [flock](https://github.com/discoteq/flock) as an extern
 - **THEN** all `qsv` operations on `table.csv` SHALL be prefixed with `flock -x <table_path>` to acquire an exclusive lock before executing
 
 #### Scenario: flock is not available
-- **WHEN** the `flock` binary is not found on the system PATH during pre-flight checks
-- **THEN** the system SHALL display an error with installation instructions (`brew install flock`) and SHALL NOT proceed with shift execution
+- **WHEN** the `flock` binary is not found on the system PATH
+- **THEN** the CLI installer (`nightshift init` and `nightshift update`) SHALL have warned the user with installation instructions (`brew install flock`) during setup, and agent bash commands that invoke `flock` SHALL fail with system-level errors
 
 ### Requirement: Exclusive file locking for all qsv table operations
 The system SHALL wrap every `qsv` command that operates on `table.csv` with `flock -x <table_path>` to acquire an exclusive file lock. This applies to all agents (manager, dev) and all commands that use `qsv` on the shift table.

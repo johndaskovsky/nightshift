@@ -22,28 +22,7 @@ Begin or resume executing a Nightshift shift by invoking the manager agent.
    - Check `manager.md` and `table.csv` exist within it
    - If missing, report the error and suggest `/nightshift-create`
 
-3. **Pre-flight dependency checks**
-
-   Run both checks via the Bash tool:
-
-   ```bash
-   qsv --version
-   flock --version
-   ```
-
-   - If `qsv` is not found: display an error and STOP. Do not proceed with shift execution.
-     ```
-     Error: Required dependency missing.
-     Install qsv: brew install qsv (https://github.com/dathere/qsv)
-     ```
-   - If `flock` is not found: display an error and STOP. Do not proceed with shift execution.
-     ```
-     Error: Required dependency missing.
-     Install flock: brew install flock (https://github.com/discoteq/flock)
-     ```
-   - If both are available: include both versions in the pre-flight summary and proceed.
-
-4. **Check if shift is already complete**
+3. **Check if shift is already complete**
 
    Use `flock -x` prefixed `qsv` commands to check if ALL item-task statuses are `done`. For each task column, run:
 
@@ -55,7 +34,7 @@ Begin or resume executing a Nightshift shift by invoking the manager agent.
    - If no items exist (`flock -x .nightshift/<name>/table.csv qsv count .nightshift/<name>/table.csv` returns 0): report "Shift has no items. Use `/nightshift-update-table <name>` to add items first."
    - If no task columns exist (`flock -x .nightshift/<name>/table.csv qsv headers --just-names .nightshift/<name>/table.csv` shows only metadata columns): report "Shift has no tasks. Use `/nightshift-add-task <name>` to add tasks first."
 
-5. **Show pre-flight summary**
+4. **Show pre-flight summary**
 
    Use `flock -x` prefixed `qsv` commands to build the summary:
 
@@ -76,8 +55,6 @@ Begin or resume executing a Nightshift shift by invoking the manager agent.
    ```
    ## Starting Shift: <name>
 
-   **qsv:** v<version>
-   **flock:** v<version>
    **Tasks:** <task-1>, <task-2>, ...
    **Items:** N total
    **Status:** X done, Y failed, Z remaining
@@ -85,7 +62,7 @@ Begin or resume executing a Nightshift shift by invoking the manager agent.
    Beginning execution...
    ```
 
-6. **Invoke the manager agent**
+5. **Invoke the manager agent**
 
    Use the **Task tool** to invoke the `nightshift-manager` subagent once. The manager runs autonomously, processing all items within a single session.
 
@@ -99,7 +76,7 @@ Begin or resume executing a Nightshift shift by invoking the manager agent.
    Process all remaining items following the orchestration logic in your instructions.
    ```
 
-7. **Report results**
+6. **Report results**
 
    After the manager returns, parse the manager's completion output for the final counts (the manager includes `Completed`, `Failed`, and `Total items` in its shift complete summary). Display the final status:
    ```
@@ -117,7 +94,6 @@ Begin or resume executing a Nightshift shift by invoking the manager agent.
 
 **Guardrails**
 - Always validate the shift directory structure before starting
-- Always check qsv and flock availability before proceeding — both are required
 - Show the pre-flight summary before invoking the manager
 - The manager runs autonomously — do NOT gate individual batches or run termination checks between batches
 - Don't invoke the manager if there's nothing to process
