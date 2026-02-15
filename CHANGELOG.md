@@ -2,6 +2,68 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.0] - 2026-02-15
+
+### Added
+
+- Add auto-release spec and archive change
+
+Archive the add-auto-release-generation change set under openspec/changes/archive/2026-02-14 and add a new formal spec at openspec/specs/auto-release/spec.md. The new spec defines requirements and scenarios for git-cliff configuration (imperative-mood commit parsing and grouping, skipping version/merge commits), a GitHub Actions release workflow that triggers on v* tags to generate release notes and create GitHub Releases, and initial CHANGELOG.md generation covering existing tags.
+- Add CLI dependency checks for qsv and flock
+
+Introduce a shared dependency checker (src/core/dependencies.ts) that runs `qsv --version` and `flock --version` with a timeout and returns structured availability/version info. Call this utility from `nightshift init` and `nightshift update` (src/cli/commands/init.ts, src/cli/commands/update.ts) to print a `--- Dependencies ---` summary showing ✓ for present tools or a warning with `brew install ...` instructions for missing tools (non-blocking). Remove the redundant pre-flight dependency checks and version lines from the `nightshift-start` template and update related specs and openspec change archives accordingly. Also update benchmarks metadata.
+
+================================================================================
+TEST RESULTS
+================================================================================
+Test                         Result    Accuracy    Duration      Benchmark
+--------------------------------------------------------------------------
+init                         PASS      11/11       1.4s          SLOW (+16.2%)
+nightshift-start             PASS      3/3         2m 41s        FASTER (-4.6%)
+nightshift-start-parallel    PASS      3/3         2m 5s         FASTER (-7.0%)
+--------------------------------------------------------------------------
+
+### Changed
+
+- Update changelog [skip ci]
+
+### Other
+
+- Improve orchestration
+
+Switch orchestration so dev and QA agents write their own item statuses to table.csv using flock-protected qsv commands; remove the transient in_progress state and simplify the state machine to todo → qa → done|failed. Make qsv and flock required dependencies, add {SHIFT:TABLE} template variable, and update manager responsibilities (progress reporting, applying only successful dev recommendations, writing manager.md and task files). Update docs, agent/command templates, and OpenSpec specs/design/proposal to reflect the new model; remove opencode.jsonc and adjust README/AGENTS.md accordingly.
+- Optimize orchestration performance
+
+Enable manager self-continuation and reduce inter-agent payloads to cut per-batch overhead. The manager now processes batches autonomously and only yields to the supervisor on compaction or completion; the supervisor no longer gates each batch or runs redundant per-batch qsv termination checks. Dev/QA agent output contracts are streamlined (dev: overall_status, recommendations, error; QA: overall_status, summary) and dev/QA continue to write statuses directly to table.csv with flock-prefixed qsv edits. Updated templates and specs to reflect the new supervisor/manager model and slimmed agent contracts, added an archived change package documenting the design/proposal/tasks, and adjusted benchmarks.json accordingly.
+- Archive spec changes
+
+Move change proposals into the 2026-02-15 archive and introduce exclusive file locking for all qsv operations on shift tables. Require qsv and flock as external dependencies and update all CSV read/write scenarios to use `flock -x <table_path> qsv <subcommand>` (including `qsv edit -i` for in-place updates). Add a new table-file-locking spec, update bash permission requirements to allow `qsv*` and `flock*` for manager/dev/QA/global contexts, and ensure manager/dev agents write status transitions to table.csv via flock-prefixed qsv commands. Also add `{SHIFT:TABLE}` placeholder support, restrict manager step-improvement application to successful dev runs, and enhance dev result reporting and retry behavior.
+- Sync specs/docs with two-agent implementation
+
+Update repository docs and OpenSpec files to match the implemented two-agent model (manager + dev) and three-state machine (todo, done, failed). Rewrites AGENTS.md and README.md to remove QA references, update state transitions, project layout (TypeScript CLI: src/, bin/, dist/, templates/, test/), build/test instructions (pnpm), and permissions/delegation rules. Modify OpenSpec specs (nightshift-installer, qsv-csv-operations, table-file-locking, test-runner) to reflect: dev self-validation, exclusive flock-wrapped qsv operations, manager/dev bash permissions only, updated init/update flags (--force applies to init; update supports --yes), pnpm build, and removal of several test requirements. Add an openspec change archive (design, proposal, tasks, per-spec diffs) and remove stale QA/global opencode.jsonc scenarios. Also trim commented tests from test/run-tests.ts to match the reduced test suite.
+
+### Removed
+
+- Remove QA & compaction handling
+
+Remove redundant QA and compaction-recovery overhead from Nightshift orchestration. This change deletes the QA subagent and its template, removes compaction detection and the supervisor's replay loop, eliminates the denormalized ## Progress writes from manager.md, and aligns the state machine to three statuses (todo, done, failed) by removing qa and in_progress. The dev agent now writes done/failed directly; the manager runs once per invocation, derives final counts from table.csv via qsv, and continues autonomous batch processing (with adaptive parallel batching preserved). Updated: templates, specs, installer, scaffolder, commands, tests, and migration tasks (existing shifts with qa-status rows must be migrated via qsv edit).
+
+================================================================================
+TEST RESULTS
+================================================================================
+Test                         Result    Accuracy    Duration      Benchmark
+--------------------------------------------------------------------------
+init                         PASS      11/11       1.2s          FASTER (-0.1%)
+nightshift-start             PASS      3/3         2m 58s        FASTER (-30.3%)
+nightshift-start-parallel    PASS      3/3         2m 15s        FASTER (-13.4%)
+--------------------------------------------------------------------------
+- Remove row column; use positional item indices
+
+Remove the redundant `row` column from the Nightshift data model and switch agents/commands to use qsv's 0-based positional indices. Update documentation and templates (AGENTS.md, README.md, various templates) to refer to "items" instead of "rows", change test-task prompts to display 1-based labels while converting to 0-based indices internally, and stop scaffolding/maintaining `row` numbering when creating or updating tables. Add an OpenSpec archived change set (2026-02-15) and corresponding modified specs to reflect the new behavior for agents, commands, CSV operations, tasks, and tests. This simplifies index handling (removes the qsv_index = row_number - 1 conversion) and keeps backward compatibility for existing tables that still include a `row` column.
+- Remove README 'Progress' subsection
+
+Delete the redundant 'Progress' block (Total items/Completed/Failed/Remaining) from the README example. This cleans up an outdated example section and avoids duplicating task status information in the documentation.
+
 ## [0.1.4] - 2026-02-15
 
 ### Added
