@@ -2,7 +2,7 @@
 description: Start or resume execution of a Nightshift shift
 ---
 
-Begin or resume executing a Nightshift shift by invoking the manager agent in a supervisor loop.
+Begin or resume executing a Nightshift shift by invoking the manager agent.
 
 **Input**: The argument after `/nightshift-start` is the shift name, or omit to select interactively.
 
@@ -85,11 +85,10 @@ Begin or resume executing a Nightshift shift by invoking the manager agent in a 
    Beginning execution...
    ```
 
-6. **Supervisor loop — invoke the manager agent**
+6. **Invoke the manager agent**
 
-   Use the **Task tool** to invoke the `nightshift-manager` subagent. The manager runs autonomously, processing all batches within a single session. The supervisor only handles compaction recovery — it does not gate individual batches.
+   Use the **Task tool** to invoke the `nightshift-manager` subagent once. The manager runs autonomously, processing all items within a single session.
 
-   **Initial invocation:**
    ```
    Execute Nightshift shift "<name>".
 
@@ -98,32 +97,11 @@ Begin or resume executing a Nightshift shift by invoking the manager agent in a 
    Read manager.md for task order and configuration.
    Read table.csv for item statuses.
    Process all remaining items following the orchestration logic in your instructions.
-
-   When you are done (all items processed or compaction detected), output:
-   Progress: M/N
-   Compacted: true|false
-
-   Where M = items with all tasks done, N = total items.
-   Report Compacted: true if you detect context compaction (e.g., you cannot confirm the shift name, directory, or current task).
    ```
-
-   **Loop logic:**
-
-   When the manager returns:
-   - Parse `Compacted: true|false` from the manager's output
-
-   - **If `Compacted: true`**:
-     - Display the progress line to the user
-     - Discard the current manager session
-     - Start a **fresh** manager subagent invocation (new Task tool call without `task_id`) with the same prompt
-     - Repeat until the manager returns without compaction
-
-   - **If `Compacted: false`** (or not present):
-     - The manager has completed all work — exit the loop and proceed to step 7
 
 7. **Report results**
 
-   After the supervisor loop exits, parse the manager's completion output for the final counts (the manager includes `Completed`, `Failed`, and `Total items` in its shift complete summary). Display the final status:
+   After the manager returns, parse the manager's completion output for the final counts (the manager includes `Completed`, `Failed`, and `Total items` in its shift complete summary). Display the final status:
    ```
    ## Shift Execution Complete
 
@@ -142,6 +120,4 @@ Begin or resume executing a Nightshift shift by invoking the manager agent in a 
 - Always check qsv and flock availability before proceeding — both are required
 - Show the pre-flight summary before invoking the manager
 - The manager runs autonomously — do NOT gate individual batches or run termination checks between batches
-- On compaction (`Compacted: true`), discard the session and start a fresh manager invocation
-- On normal completion (`Compacted: false`), parse final counts from the manager's output and display the report
 - Don't invoke the manager if there's nothing to process

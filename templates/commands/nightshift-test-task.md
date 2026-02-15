@@ -48,34 +48,15 @@ Execute a single task on one item for testing purposes — without modifying the
    Execute the steps and return structured results.
    ```
 
-5. **Verify the task (qa agent)**
-
-   Use the **Task tool** to invoke the `nightshift-qa` subagent with:
-   ```
-   You are verifying Nightshift task "<task-name>" on a single item FOR TESTING.
-
-   ## Task Validation Criteria
-   <Validation section from task file>
-
-   ## Item Data (Row <N>)
-   <all column values>
-
-   ## Dev Results
-   <dev agent's returned results>
-
-   Check each criterion and return structured results.
-   ```
-
-6. **Display results (without updating table)**
+5. **Display results (without updating table)**
 
    ```
    ## Test Results: <task-name> on Row <N>
 
    ### Dev Execution
-   <step-by-step results from dev agent>
-
-   ### QA Verification
-   <per-criterion results from qa agent>
+   **Status:** <SUCCESS / FAILED (step N) / FAILED (validation)>
+   **Recommendations:** <step improvements from dev agent, or "None">
+   **Error:** <error details if failed, omit if successful>
 
    ### Overall: PASS / FAIL
 
@@ -85,6 +66,5 @@ Execute a single task on one item for testing purposes — without modifying the
 **Guardrails**
 - NEVER modify table.csv during a test run
 - NEVER modify manager.md during a test run
-- Always run both dev and qa agents to get the full picture
 - Display detailed results so the user can debug task definitions
 - Include the "test run only" note in output

@@ -36,7 +36,7 @@ export function writeAgentFiles(options: ScaffoldOptions): ScaffoldResult {
   const agentsDir = getTemplatePath("agents");
   const targetAgentDir = join(options.targetDir, ".opencode", "agent");
 
-  const agentFiles = ["nightshift-manager.md", "nightshift-dev.md", "nightshift-qa.md"];
+  const agentFiles = ["nightshift-manager.md", "nightshift-dev.md"];
 
   for (const file of agentFiles) {
     const content = readFileSync(join(agentsDir, file), "utf-8");

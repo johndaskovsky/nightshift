@@ -393,13 +393,6 @@ const FIXTURE_MANAGER_EMPTY = `## Shift Configuration
 ## Task Order
 
 (no tasks yet — use \`/nightshift-add-task ${TEST_SHIFT_NAME}\` to add tasks)
-
-## Progress
-
-- Total items: 0
-- Completed: 0
-- Failed: 0
-- Remaining: 0
 `;
 
 const FIXTURE_MANAGER_WITH_TASK = `## Shift Configuration
@@ -410,13 +403,6 @@ const FIXTURE_MANAGER_WITH_TASK = `## Shift Configuration
 ## Task Order
 
 1. ${FIXTURE_TASK_NAME}
-
-## Progress
-
-- Total items: 3
-- Completed: 0
-- Failed: 0
-- Remaining: 3
 `;
 
 const FIXTURE_MANAGER_PARALLEL = `## Shift Configuration
@@ -430,13 +416,6 @@ const FIXTURE_MANAGER_PARALLEL = `## Shift Configuration
 ## Task Order
 
 1. ${FIXTURE_TASK_NAME}
-
-## Progress
-
-- Total items: 3
-- Completed: 0
-- Failed: 0
-- Remaining: 3
 `;
 
 const FIXTURE_TABLE_EMPTY = `row\n`;
@@ -539,7 +518,6 @@ const tests: TestDefinition[] = [
         path: ".opencode/agent/nightshift-manager.md",
       },
       { label: "nightshift-dev.md", type: "file", path: ".opencode/agent/nightshift-dev.md" },
-      { label: "nightshift-qa.md", type: "file", path: ".opencode/agent/nightshift-qa.md" },
       {
         label: "nightshift-create.md",
         type: "file",

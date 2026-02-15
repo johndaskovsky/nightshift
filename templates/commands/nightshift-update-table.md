@@ -86,11 +86,7 @@ Bulk modify the table.csv of a shift — add rows, update metadata, or reset fai
    - Use the **AskUserQuestion tool**: "Apply these changes?"
    - Only proceed on confirmation
 
-6. **Update progress in manager.md**
-
-   After modifying the table, recalculate and update the `## Progress` section in manager.md with current counts.
-
-7. **Show result**
+6. **Show result**
 
    ```
    ## Table Updated: <shift-name>
@@ -105,5 +101,4 @@ Bulk modify the table.csv of a shift — add rows, update metadata, or reset fai
 - Preserve row numbering continuity when adding rows
 - Set all task columns to `todo` for new rows
 - Never reorder existing rows
-- Update manager.md progress after any change
 - Show the user what will change before applying

@@ -1,19 +1,4 @@
-## ADDED Requirements
-
-### Requirement: Parallel dispatch mode
-The manager agent SHALL support a parallel dispatch mode in which multiple table rows are processed concurrently for a single task. Parallel mode SHALL be enabled by setting `parallel: true` in the Shift Configuration section of `manager.md`. When parallel mode is not enabled (omitted or `false`), the manager SHALL process one row at a time (batch size fixed at 1).
-
-#### Scenario: Parallel mode enabled
-- **WHEN** `manager.md` contains `parallel: true` in the Shift Configuration section
-- **THEN** the manager SHALL dispatch multiple dev agents concurrently for different rows of the same task, using adaptive batch sizing
-
-#### Scenario: Parallel mode disabled (default)
-- **WHEN** `manager.md` does not contain `parallel: true` (omitted or set to `false`)
-- **THEN** the manager SHALL process one row at a time, equivalent to a fixed batch size of 1
-
-#### Scenario: Parallel dispatch uses Task tool concurrency
-- **WHEN** the manager dispatches a batch of N rows
-- **THEN** it SHALL issue N parallel Task tool calls in a single message, one per row, each invoking the nightshift-dev agent
+## MODIFIED Requirements
 
 ### Requirement: Adaptive batch sizing
 The manager agent SHALL determine batch size adaptively when parallel mode is enabled. The initial batch size SHALL be determined by the `current-batch-size` field in the Shift Configuration section of `manager.md`; if omitted, the default SHALL be 2. The manager SHALL increase batch size on success and decrease on failure. The batch size SHALL NOT exceed the value of `max-batch-size` if that field is present.
@@ -88,13 +73,24 @@ If the shift is interrupted mid-batch, the existing resume logic SHALL handle re
 - **WHEN** a shift is resumed after an interruption during a parallel batch
 - **THEN** all items still in `todo` status SHALL be eligible for dispatch in the next batch
 
-### Requirement: Row-level parallelism only
-The system SHALL only parallelize across rows for a single task. Different tasks within the same row SHALL remain strictly sequential per the task ordering rules.
+## REMOVED Requirements
 
-#### Scenario: Parallel across rows
-- **WHEN** parallel mode is enabled for a task with 10 `todo` rows
-- **THEN** the manager SHALL dispatch multiple rows concurrently for that task
+### Requirement: QA runs concurrently after batch
+**Reason**: The QA agent has been removed from the orchestration flow. The dev agent writes terminal status (`done`/`failed`) directly.
+**Migration**: The batch lifecycle ends after dev execution and learning application.
 
-#### Scenario: Sequential across tasks per row
-- **WHEN** a row has tasks "create_page" and "update_spreadsheet" in order
-- **THEN** "update_spreadsheet" SHALL NOT begin for that row until "create_page" is `done`, regardless of parallel mode
+### Requirement: Failed dev items skip QA
+**Reason**: Removed along with the QA phase. The dev agent writes `failed` directly on failure.
+**Migration**: None required.
+
+### Requirement: QA runs concurrently in parallel mode
+**Reason**: Removed along with the QA agent role.
+**Migration**: None required.
+
+### Requirement: All batch items marked in_progress before dispatch
+**Reason**: The `in_progress` status was specified but never implemented. Items remain `todo` until the dev agent writes `done` or `failed`.
+**Migration**: None required — this was never implemented.
+
+### Requirement: Batch dispatch phase
+**Reason**: The batch dispatch phase required setting items to `in_progress` before dispatching dev agents. Since `in_progress` is removed, the batch dispatch is simply issuing parallel Task tool calls without a status write step.
+**Migration**: The manager dispatches dev agents directly without a pre-dispatch status write.

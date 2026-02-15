@@ -25,11 +25,11 @@ The system SHALL provide a `nightshift init` command that creates the required d
 - **THEN** the system SHALL NOT delete or modify existing non-Nightshift files in those directories
 
 ### Requirement: Init command generates agent files
-The system SHALL write the three Nightshift agent definition files from bundled templates during `nightshift init`.
+The system SHALL write the two Nightshift agent definition files from bundled templates during `nightshift init`.
 
 #### Scenario: Agent files are written
 - **WHEN** `nightshift init` completes successfully
-- **THEN** the following files SHALL exist with content matching the bundled templates: `.opencode/agent/nightshift-manager.md`, `.opencode/agent/nightshift-dev.md`, `.opencode/agent/nightshift-qa.md`
+- **THEN** the following files SHALL exist with content matching the bundled templates: `.opencode/agent/nightshift-manager.md`, `.opencode/agent/nightshift-dev.md`
 
 #### Scenario: Agent files overwrite previous Nightshift agents
 - **WHEN** `nightshift init` runs and `.opencode/agent/nightshift-manager.md` already exists from a prior installation
@@ -62,7 +62,7 @@ The system SHALL provide a `nightshift update` command that regenerates all fram
 
 #### Scenario: Update overwrites agent files
 - **WHEN** a user runs `nightshift update`
-- **THEN** the system SHALL overwrite all three agent files in `.opencode/agent/` with the current bundled templates
+- **THEN** the system SHALL overwrite both agent files in `.opencode/agent/` with the current bundled templates
 
 #### Scenario: Update overwrites command files
 - **WHEN** a user runs `nightshift update`
@@ -110,7 +110,7 @@ The system SHALL bundle all Nightshift agent and command templates inside the np
 
 #### Scenario: Templates directory structure
 - **WHEN** the npm package is inspected
-- **THEN** `templates/` SHALL contain `agents/nightshift-manager.md`, `agents/nightshift-dev.md`, `agents/nightshift-qa.md`, `commands/nightshift-create.md`, `commands/nightshift-start.md`, `commands/nightshift-archive.md`, `commands/nightshift-add-task.md`, `commands/nightshift-test-task.md`, and `commands/nightshift-update-table.md`
+- **THEN** `templates/` SHALL contain `agents/nightshift-manager.md`, `agents/nightshift-dev.md`, `commands/nightshift-create.md`, `commands/nightshift-start.md`, `commands/nightshift-archive.md`, `commands/nightshift-add-task.md`, `commands/nightshift-test-task.md`, and `commands/nightshift-update-table.md`
 
 #### Scenario: Templates are resolvable at runtime
 - **WHEN** the CLI executes `init` or `update`

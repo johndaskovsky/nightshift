@@ -46,7 +46,7 @@ The system SHALL include a test that validates the `nightshift init` command by 
 
 #### Scenario: Init scaffolds expected agent files
 - **WHEN** the init test runs `nightshift init` in the workspace directory
-- **THEN** the following files SHALL exist: `.opencode/agent/nightshift-manager.md`, `.opencode/agent/nightshift-dev.md`, `.opencode/agent/nightshift-qa.md`
+- **THEN** the following files SHALL exist: `.opencode/agent/nightshift-manager.md`, `.opencode/agent/nightshift-dev.md`
 
 #### Scenario: Init scaffolds expected command files
 - **WHEN** the init test runs `nightshift init` in the workspace directory
@@ -72,7 +72,7 @@ The system SHALL include a test that validates the `nightshift-create` command p
 
 #### Scenario: Create command manager file structure
 - **WHEN** the runner validates the created `manager.md`
-- **THEN** the file SHALL contain the sections `## Shift Configuration`, `## Task Order`, and `## Progress`
+- **THEN** the file SHALL contain the sections `## Shift Configuration` and `## Task Order`
 
 #### Scenario: Create command table structure
 - **WHEN** the runner validates the created `table.csv`

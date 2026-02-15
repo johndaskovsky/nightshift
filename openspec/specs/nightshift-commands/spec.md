@@ -25,7 +25,7 @@ The system SHALL provide a `/nightshift-create` command that scaffolds a new shi
 - **THEN** the system SHALL report that the shift already exists and suggest using `/nightshift-start` to resume it
 
 ### Requirement: Start shift command
-The system SHALL provide a `/nightshift-start` command that begins or resumes execution of a shift by invoking the manager agent. The command SHALL perform a pre-flight check for qsv and flock availability. The command SHALL operate as a supervisor that invokes the manager and handles compaction recovery, but SHALL NOT gate the manager between batches.
+The system SHALL provide a `/nightshift-start` command that begins or resumes execution of a shift by invoking the manager agent. The command SHALL perform a pre-flight check for qsv and flock availability. The command SHALL invoke the manager once and read its completion output for the final report.
 
 #### Scenario: Start a new shift
 - **WHEN** user runs `/nightshift-start my-batch-job` and all table statuses are `todo`
@@ -33,7 +33,7 @@ The system SHALL provide a `/nightshift-start` command that begins or resumes ex
 
 #### Scenario: Resume an interrupted shift
 - **WHEN** user runs `/nightshift-start my-batch-job` and the table contains a mix of `done`, `todo`, and `failed` statuses
-- **THEN** the system SHALL invoke the nightshift-manager agent, which SHALL skip `done` items and process remaining `todo` and `qa` items autonomously
+- **THEN** the system SHALL invoke the nightshift-manager agent, which SHALL skip `done` items and process remaining `todo` items autonomously
 
 #### Scenario: Start without shift name prompts selection
 - **WHEN** user runs `/nightshift-start` without a name and multiple active shifts exist
@@ -60,12 +60,8 @@ The system SHALL provide a `/nightshift-start` command that begins or resumes ex
 - **THEN** it SHALL use `qsv count`, `qsv search`, and `qsv table` to read and display the table summary instead of reading the full file with the Read tool
 
 #### Scenario: Supervisor handles manager completion
-- **WHEN** the manager returns without reporting compaction
+- **WHEN** the manager returns its completion output
 - **THEN** the supervisor SHALL parse the final counts from the manager's completion output and proceed to the final report
-
-#### Scenario: Supervisor handles compaction
-- **WHEN** the manager returns with `Compacted: true` in its output
-- **THEN** the supervisor SHALL discard the current manager session and start a fresh manager invocation to continue the shift
 
 #### Scenario: Supervisor does not gate batches
 - **WHEN** the manager is processing batches within a single session
@@ -73,7 +69,7 @@ The system SHALL provide a `/nightshift-start` command that begins or resumes ex
 
 #### Scenario: Supervisor reads progress from manager output
 - **WHEN** the supervisor needs to determine final shift status after the manager returns
-- **THEN** it SHALL parse the final counts from the manager's completion output instead of reading `manager.md` or running independent `qsv search` commands against `table.csv`
+- **THEN** it SHALL parse the final counts from the manager's completion output
 
 ### Requirement: Archive shift command
 The system SHALL provide a `/nightshift-archive` command that moves a completed shift to the archive directory with a date prefix. The status check SHALL use `qsv search`.
@@ -110,7 +106,7 @@ The system SHALL provide a `/nightshift-test-task` command that executes a singl
 
 #### Scenario: Test specific task and row
 - **WHEN** user runs `/nightshift-test-task my-batch-job` and specifies task "create_page" and row 3
-- **THEN** the system SHALL extract row 3's data using `qsv slice --index 2 table.csv`, execute the task steps, run QA validation, and display the full results without updating table.csv
+- **THEN** the system SHALL extract row 3's data using `qsv slice --index 2 table.csv`, execute the task steps, run self-validation, and display the full results without updating table.csv
 
 #### Scenario: Test prompts for task and row
 - **WHEN** user runs `/nightshift-test-task my-batch-job` without specifying task or row

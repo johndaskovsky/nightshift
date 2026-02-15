@@ -42,13 +42,6 @@ Create a new Nightshift shift — a structured unit of batch agent work.
    ## Task Order
 
    (no tasks yet — use `/nightshift-add-task <name>` to add tasks)
-
-   ## Progress
-
-   - Total items: 0
-   - Completed: 0
-   - Failed: 0
-   - Remaining: 0
    ```
 
    **table.csv:**
