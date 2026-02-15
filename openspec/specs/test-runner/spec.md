@@ -63,47 +63,6 @@ The system SHALL execute each nightshift command under test using `opencode run 
 - **WHEN** a command execution exceeds a configurable timeout (default: 5 minutes)
 - **THEN** the runner SHALL kill the process, record the test as failed with reason "timeout", and proceed to the next test
 
-### Requirement: Nightshift-create command test
-The system SHALL include a test that validates the `nightshift-create` command produces the expected shift structure.
-
-#### Scenario: Create command produces shift files
-- **WHEN** the runner executes `nightshift-create` with a test shift name in an initialized workspace
-- **THEN** the following artifacts SHALL exist: `.nightshift/<shift-name>/manager.md`, `.nightshift/<shift-name>/table.csv`
-
-#### Scenario: Create command manager file structure
-- **WHEN** the runner validates the created `manager.md`
-- **THEN** the file SHALL contain the sections `## Shift Configuration` and `## Task Order`
-
-#### Scenario: Create command table structure
-- **WHEN** the runner validates the created `table.csv`
-- **THEN** the file SHALL contain a header row with no pre-defined columns (columns are added when tasks are defined)
-
-### Requirement: Nightshift-add-task command test
-The system SHALL include a test that validates the `nightshift-add-task` command adds a task to an existing shift.
-
-#### Scenario: Add-task creates task file
-- **WHEN** the runner executes `nightshift-add-task` on an existing shift
-- **THEN** a new task `.md` file SHALL exist in the shift directory (`.nightshift/<shift-name>/<task-name>.md`)
-
-#### Scenario: Add-task updates table with status column
-- **WHEN** the runner validates `table.csv` after `nightshift-add-task` completes
-- **THEN** the CSV header row SHALL include a new column matching the task name
-
-#### Scenario: Add-task updates manager task order
-- **WHEN** the runner validates `manager.md` after `nightshift-add-task` completes
-- **THEN** the `## Task Order` section SHALL list the new task name
-
-### Requirement: Nightshift-update-table command test
-The system SHALL include a test that validates the `nightshift-update-table` command can add rows to a shift table.
-
-#### Scenario: Update-table adds rows
-- **WHEN** the runner executes `nightshift-update-table` to add rows to an existing shift
-- **THEN** `table.csv` SHALL contain the expected number of data rows (excluding the header row)
-
-#### Scenario: Update-table initializes task statuses
-- **WHEN** the runner validates `table.csv` after rows are added
-- **THEN** all new rows SHALL have `todo` as the value in each task status column
-
 ### Requirement: Nightshift-start command test
 The system SHALL include a test that validates the `nightshift-start` command initiates shift execution by delegating to the manager agent.
 
@@ -117,24 +76,6 @@ The system SHALL include a test that validates the `nightshift-start` command in
 #### Scenario: Start command processes items in parallel mode
 - **WHEN** the runner executes `nightshift-start` on a shift with `parallel: true`, `current-batch-size: 3`, and `max-batch-size: 3` in the Shift Configuration section, and the shift has tasks and rows
 - **THEN** `table.csv` SHALL contain at least one row where a task status column has a value other than `todo` (indicating processing occurred)
-
-### Requirement: Nightshift-test-task command test
-The system SHALL include a test that validates the `nightshift-test-task` command executes a single task on a single row without modifying state.
-
-#### Scenario: Test-task does not modify table
-- **WHEN** the runner captures the contents of `table.csv` before and after executing `nightshift-test-task`
-- **THEN** the file contents SHALL be identical
-
-### Requirement: Nightshift-archive command test
-The system SHALL include a test that validates the `nightshift-archive` command moves a shift to the archive directory.
-
-#### Scenario: Archive moves shift directory
-- **WHEN** the runner executes `nightshift-archive` on an existing shift
-- **THEN** the original shift directory (`.nightshift/<shift-name>/`) SHALL no longer exist and a date-prefixed directory SHALL exist under `.nightshift/archive/` (matching the pattern `YYYY-MM-DD-<shift-name>`)
-
-#### Scenario: Archive preserves files
-- **WHEN** the runner validates the archived shift directory
-- **THEN** the directory SHALL contain `manager.md`, `table.csv`, and any task `.md` files that existed before archiving
 
 ### Requirement: Accuracy tracking
 The system SHALL track accuracy for each test as the ratio of expected artifacts that were found to the total number of expected artifacts. Each test definition SHALL declare its expected artifact checklist.
@@ -163,7 +104,7 @@ The system SHALL print a summary table to stdout after all tests complete. The s
 - **THEN** the runner SHALL exit with a non-zero exit code and print a summary showing which tests failed and their accuracy ratios
 
 ### Requirement: Test execution order
-The system SHALL execute tests in a fixed sequential order that respects dependencies between commands: `init`, `nightshift-create`, `nightshift-add-task`, `nightshift-update-table`, `nightshift-start`, `nightshift-start-parallel`, `nightshift-test-task`, `nightshift-archive`.
+The system SHALL execute tests in a fixed sequential order that respects dependencies between commands: `init`, `nightshift-start`, `nightshift-start-parallel`.
 
 #### Scenario: Sequential execution
 - **WHEN** the test runner starts

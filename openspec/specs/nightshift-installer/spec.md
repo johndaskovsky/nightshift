@@ -80,11 +80,15 @@ The system SHALL produce identical results when `nightshift update` is run multi
 - **THEN** the system SHALL NOT read, modify, or delete any files inside `.nightshift/`
 
 ### Requirement: Non-interactive mode
-The system SHALL support `--force` and `--yes` flags on both `init` and `update` commands to skip all confirmation prompts.
+The system SHALL support `--force` and `--yes` flags on the `init` command to skip confirmation prompts. The `update` command SHALL support `--yes` to skip confirmation. The `update` command always overwrites framework files, so `--force` is not applicable.
 
 #### Scenario: Init with --force skips all prompts
 - **WHEN** a user runs `nightshift init --force`
 - **THEN** the system SHALL proceed with all operations using default choices without prompting for user input
+
+#### Scenario: Init with --yes skips confirmation
+- **WHEN** a user runs `nightshift init --yes`
+- **THEN** the system SHALL proceed without asking for confirmation
 
 #### Scenario: Update with --yes skips confirmation
 - **WHEN** a user runs `nightshift update --yes`
@@ -120,7 +124,7 @@ The system SHALL bundle all Nightshift agent and command templates inside the np
 The system SHALL compile TypeScript source to JavaScript using a build step before publishing.
 
 #### Scenario: Build produces dist output
-- **WHEN** `npm run build` is executed
+- **WHEN** `pnpm run build` is executed
 - **THEN** the system SHALL compile all TypeScript files from `src/` to `dist/` targeting ES2022 with NodeNext module resolution
 
 #### Scenario: Build is required before publish

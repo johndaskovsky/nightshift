@@ -13,8 +13,8 @@ The system SHALL require [qsv](https://github.com/dathere/qsv) as the CLI tool f
 The system SHALL update individual cell values in `table.csv` using `flock -x <table_path> qsv edit` with the `-i` (in-place) flag. The column SHALL be specified by name and the row by 0-based index. All cell updates SHALL be wrapped with `flock -x` for exclusive file locking.
 
 #### Scenario: Update a status cell
-- **WHEN** any agent needs to set the item at position 2's `create_page` status to `qa`
-- **THEN** it SHALL execute `flock -x <table_path> qsv edit -i <table_path> create_page 2 qa`
+- **WHEN** any agent needs to set the item at position 2's `create_page` status to `done`
+- **THEN** it SHALL execute `flock -x <table_path> qsv edit -i <table_path> create_page 2 done`
 
 #### Scenario: In-place edit creates backup
 - **WHEN** `flock -x <table_path> qsv edit -i` modifies `table.csv`
@@ -94,7 +94,7 @@ The system SHALL display `table.csv` contents in human-readable format using `fl
 - **THEN** it SHALL execute `flock -x <table_path> qsv table <table_path>` to produce an aligned, readable output
 
 ### Requirement: Bash permission for qsv
-The system SHALL allow `qsv*` and `flock*` commands in the bash permission configuration for the manager agent, the dev agent, the QA agent, and the global OpenCode permissions.
+The system SHALL allow `qsv*` and `flock*` commands in the bash permission configuration for the manager agent and the dev agent.
 
 #### Scenario: Manager agent bash permissions
 - **WHEN** the manager agent's frontmatter defines bash permissions
@@ -103,11 +103,3 @@ The system SHALL allow `qsv*` and `flock*` commands in the bash permission confi
 #### Scenario: Dev agent bash permissions
 - **WHEN** the dev agent's frontmatter defines bash permissions
 - **THEN** it SHALL include `"qsv*": allow` and `"flock*": allow` as exceptions alongside `"mkdir*": allow`
-
-#### Scenario: QA agent bash permissions
-- **WHEN** the QA agent's frontmatter defines bash permissions
-- **THEN** it SHALL include `"qsv*": allow` and `"flock*": allow` as exceptions to the default deny-all policy
-
-#### Scenario: Global bash permissions
-- **WHEN** the global `opencode.jsonc` defines bash permissions
-- **THEN** it SHALL include `"qsv*": "allow"` and `"flock*": "allow"` in the bash permission block

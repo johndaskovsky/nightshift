@@ -10,23 +10,22 @@
 
 Long-running unsupervised agent framework
 
-A batch processing framework for AI agents. Define a table of items, write task instructions, and let a three-agent system (manager, dev, QA) work through them autonomously with built-in retries, self-improvement, and independent verification.
+A batch processing framework for AI agents. Define a table of items, write task instructions, and let a two-agent system (manager, dev) work through them autonomously with built-in retries, self-improvement, and self-validation.
 
-Nightshift runs inside [OpenCode](https://opencode.ai/) as a set of custom agents, commands, and skills. There is no traditional source code -- the entire framework is defined through Markdown, CSV, YAML, and JSONC configuration files.
+Nightshift runs inside [OpenCode](https://opencode.ai/) as a set of custom agents, commands, and skills. It is distributed as a TypeScript CLI installer (`nightshift init` / `nightshift update`) that scaffolds agent and command files into target projects.
 
 ## How It Works
 
-A **shift** is a batch job. It contains a CSV table of items to process and one or more task definitions that describe what to do with each item. Three agents collaborate to execute the work:
+A **shift** is a batch job. It contains a CSV table of items to process and one or more task definitions that describe what to do with each item. Two agents collaborate to execute the work:
 
-- **Manager** -- reads shift state, picks the next item, delegates to dev and QA, applies step improvements from successful dev agents, and reports progress. Writes `manager.md` and task files; reads `table.csv` for status information.
-- **Dev** -- executes task steps on a single item, self-validates, retries up to 3 times, reports step improvement recommendations, and writes its own status to `table.csv` (`qa` on success, `failed` on failure).
-- **QA** -- independently verifies the dev's work against validation criteria and writes its own status to `table.csv` (`done` on pass, `failed` on fail).
+- **Manager** -- reads shift state, picks the next item, delegates to dev, applies step improvements from successful dev agents, and reports progress. Writes `manager.md` and task files; reads `table.csv` for status information.
+- **Dev** -- executes task steps on a single item, self-validates, retries up to 3 times, reports step improvement recommendations, and writes its own status to `table.csv` (`done` on success, `failed` on failure).
 
 Each item-task moves through a state machine:
 
 ```
-todo --> qa --> done
-    \        /
+todo --> done
+    \
      -> failed
 ```
 
@@ -131,7 +130,7 @@ Each task gets a status column initialized to `todo`.
 /nightshift-start my-batch-job
 ```
 
-The manager agent takes over: it reads the table, picks the next `todo` item, delegates to the dev agent, sends successful results to QA, updates statuses, and loops until everything is `done` or `failed`.
+The manager agent takes over: it reads the table, picks the next `todo` item, delegates to the dev agent, updates statuses, and loops until everything is `done` or `failed`.
 
 ### 5. Test a single task (optional)
 
@@ -139,7 +138,7 @@ The manager agent takes over: it reads the table, picks the next `todo` item, de
 /nightshift-test-task my-batch-job
 ```
 
-Runs one task on one item through both dev and QA agents **without modifying any state**. Useful for debugging task definitions before running a full shift.
+Runs one task on one item through the dev agent **without modifying any state**. Useful for debugging task definitions before running a full shift.
 
 ### 6. Archive a completed shift
 
@@ -210,12 +209,12 @@ Each row is an item. Metadata columns hold the data tasks need. Status columns (
 
 ```csv
 url,page_title,create_page,update_cms
-https://example.com/site1,Welcome,done,qa
+https://example.com/site1,Welcome,done,done
 https://example.com/site2,About Us,todo,todo
 https://example.com/site3,Contact,todo,todo
 ```
 
-Status values: `todo`, `qa`, `done`, `failed`.
+Status values: `todo`, `done`, `failed`.
 
 ### Task files
 
@@ -242,17 +241,17 @@ The dev agent gets up to 3 attempts per item (1 initial + 2 retries). On each at
 3. Identifies step improvement recommendations
 4. Self-validates against the Validation criteria
 5. Retries from scratch if self-validation fails and attempts remain
-6. Writes its own status to `table.csv` (`qa` on success, `failed` on failure)
+6. Writes its own status to `table.csv` (`done` on success, `failed` on failure)
 
 Step improvement recommendations are reported back to the manager, which applies them to the task file. Only recommendations from successful dev executions are applied; failed executions' recommendations are discarded.
 
-### QA verification
+### Self-validation
 
-After a successful dev execution, the QA agent independently checks every validation criterion using read-only tools (file reads, grep, Playwright). It reports per-criterion pass/fail with specific evidence. All criteria must pass for `done`; any failure means `failed`. The QA agent writes its own status to `table.csv`.
+The dev agent validates its own work against the task's Validation criteria after each attempt. All criteria must pass for the item to be marked `done`. If validation fails and retry attempts remain, the dev agent retries from scratch. After exhausting all attempts, the item is marked `failed`.
 
 ### Resumability
 
-If a shift is interrupted, `/nightshift-start` picks up where it left off. There are no transient states to recover from -- items are either `todo` (available for dev processing), `qa` (awaiting QA verification), `done`, or `failed`. On resume, `todo` items are dispatched to dev, `qa` items are dispatched to QA, and `done`/`failed` items are skipped.
+If a shift is interrupted, `/nightshift-start` picks up where it left off. There are no transient states to recover from -- items are either `todo` (available for dev processing), `done`, or `failed`. On resume, `todo` items are dispatched to dev and `done`/`failed` items are skipped.
 
 ### Graceful degradation
 
@@ -345,18 +344,24 @@ All placeholders use fail-fast behavior. A missing column value, undefined envir
 
 | Agent | Write | Edit | Bash | Delegation | Playwright |
 |-------|-------|------|------|------------|------------|
-| Manager | yes | yes | `qsv`, `flock` | dev, qa only | no |
+| Manager | yes | yes | `qsv`, `flock` | dev only | no |
 | Dev | yes | yes | `mkdir`, `qsv`, `flock` | none | yes |
-| QA | no | no | `qsv`, `flock` | none | yes |
 
 ## Project Layout
 
 ```
 night-shift/
-  .nightshift/          # Active and archived shifts
+  src/                  # TypeScript CLI source (init, update commands)
+  bin/                  # CLI entry script
+  dist/                 # Compiled output (generated by build)
+  templates/
+    agents/             # Manager and dev agent instructions
+    commands/           # Slash command definitions
+  test/                 # Integration tests
+  .nightshift/          # Active and archived shifts (in target projects)
   .opencode/
-    agent/              # Manager, dev, and QA agent instructions
-    command/            # Slash command definitions
+    command/            # OpenSpec slash commands (this project)
+    skills/             # OpenSpec workflow skills (this project)
 ```
 
 ## License

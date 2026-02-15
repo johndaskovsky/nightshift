@@ -1,6 +1,6 @@
 ## Purpose
 
-Defines exclusive file locking for all `qsv` operations on `table.csv` using `flock -x`. Ensures serialized access when multiple agents (manager, dev, QA) read from or write to the shift table concurrently, preventing data corruption from simultaneous writes.
+Defines exclusive file locking for all `qsv` operations on `table.csv` using `flock -x`. Ensures serialized access when multiple agents (manager, dev) read from or write to the shift table concurrently, preventing data corruption from simultaneous writes.
 
 ## Requirements
 
@@ -16,10 +16,10 @@ The system SHALL require [flock](https://github.com/discoteq/flock) as an extern
 - **THEN** the system SHALL display an error with installation instructions (`brew install flock`) and SHALL NOT proceed with shift execution
 
 ### Requirement: Exclusive file locking for all qsv table operations
-The system SHALL wrap every `qsv` command that operates on `table.csv` with `flock -x <table_path>` to acquire an exclusive file lock. This applies to all agents (manager, dev, QA) and all commands that use `qsv` on the shift table.
+The system SHALL wrap every `qsv` command that operates on `table.csv` with `flock -x <table_path>` to acquire an exclusive file lock. This applies to all agents (manager, dev) and all commands that use `qsv` on the shift table.
 
 #### Scenario: Status write with lock
-- **WHEN** a dev or QA agent updates an item-task status in `table.csv`
+- **WHEN** the dev agent updates an item-task status in `table.csv`
 - **THEN** the command SHALL be executed as `flock -x <table_path> qsv edit -i <table_path> <column> <index> <value>`
 
 #### Scenario: Status read with lock
@@ -47,17 +47,6 @@ The dev agent SHALL have `flock*` and `qsv*` commands allowed in its bash permis
 
 #### Scenario: Dev agent can execute qsv commands
 - **WHEN** the dev agent needs to read from or write to `table.csv`
-- **THEN** it SHALL execute `qsv` subcommands via the Bash tool without permission denial
-
-### Requirement: QA agent bash permissions for table locking
-The QA agent SHALL have `flock*` and `qsv*` commands allowed in its bash permission configuration for writing item-task status to `table.csv`.
-
-#### Scenario: QA agent can execute flock commands
-- **WHEN** the QA agent needs to update its item-task status in `table.csv`
-- **THEN** it SHALL execute `flock -x <table_path> qsv edit -i <table_path> <column> <index> <value>` without permission denial
-
-#### Scenario: QA agent can execute qsv commands
-- **WHEN** the QA agent needs to read from or write to `table.csv`
 - **THEN** it SHALL execute `qsv` subcommands via the Bash tool without permission denial
 
 ### Requirement: Manager agent bash permissions for flock
