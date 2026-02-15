@@ -9,7 +9,7 @@ The system SHALL define a `nightshift-manager` subagent that orchestrates shift 
 
 #### Scenario: Manager delegates to dev
 - **WHEN** the manager identifies an item-task with status `todo`
-- **THEN** it SHALL invoke the nightshift-dev agent with the task file contents (including Validation section), the item's row metadata (extracted via `qsv slice` and `qsv select`), environment variables from `.env` (if present), shift metadata (shift name, shift directory path), and instructions about self-validation and retry behavior
+- **THEN** it SHALL invoke the nightshift-dev agent with the task file contents (including Validation section), the item's metadata (extracted via `qsv slice --index <qsv_index>` and `qsv select`), environment variables from `.env` (if present), shift metadata (shift name, shift directory path), the table path, the task column name, and the 0-based qsv positional index, and instructions about self-validation and retry behavior
 
 #### Scenario: Manager handles dev failure after retries
 - **WHEN** the dev agent returns a result with `overall_status` containing `FAILED`
@@ -31,12 +31,12 @@ The system SHALL define a `nightshift-manager` subagent that orchestrates shift 
 The manager SHALL process tasks for each item in the order specified in the Task Order section of `manager.md`. A subsequent task for an item SHALL NOT begin until all preceding tasks for that item are `done`.
 
 #### Scenario: Sequential task processing per item
-- **WHEN** a shift has tasks "create_page" then "update_spreadsheet" and item row 5 has `create_page: done` and `update_spreadsheet: todo`
-- **THEN** the manager SHALL process "update_spreadsheet" for row 5
+- **WHEN** a shift has tasks "create_page" then "update_spreadsheet" and item at position 4 (0-based) has `create_page: done` and `update_spreadsheet: todo`
+- **THEN** the manager SHALL process "update_spreadsheet" for that item
 
 #### Scenario: Blocked task skipped
-- **WHEN** item row 5 has `create_page: failed` and `update_spreadsheet: todo`
-- **THEN** the manager SHALL NOT process "update_spreadsheet" for row 5 since the prerequisite task failed
+- **WHEN** item at position 4 (0-based) has `create_page: failed` and `update_spreadsheet: todo`
+- **THEN** the manager SHALL NOT process "update_spreadsheet" for that item since the prerequisite task failed
 
 ### Requirement: Decentralized status writes
 The dev agent SHALL write its own status transitions to `table.csv` using `flock -x` prefixed `qsv edit -i` commands. The manager SHALL NOT write status transitions — it reads `table.csv` for status information and writes only to `manager.md` (configuration and task order) and task files (step improvements).
@@ -50,11 +50,11 @@ The dev agent SHALL write its own status transitions to `table.csv` using `flock
 - **THEN** it SHALL write `failed` status to `table.csv` using `flock -x <table_path> qsv edit -i <table_path> <task_column> <qsv_index> failed`
 
 ### Requirement: Dev agent role
-The system SHALL define a `nightshift-dev` subagent that executes task steps on a single table item. The dev agent SHALL receive the task steps, item metadata, shift metadata, environment variables (if a `.env` file exists), tool configuration, the table path, the task column name, and the qsv row index from the manager. After execution, the dev agent SHALL run self-validation against the Validation criteria, retry up to 2 times if self-validation fails (refining its approach in-memory across retries), report step improvement recommendations to the manager, and write its own status transition to `table.csv` using `flock -x <table_path> qsv edit -i`.
+The system SHALL define a `nightshift-dev` subagent that executes task steps on a single table item. The dev agent SHALL receive the task steps, item metadata, shift metadata, environment variables (if a `.env` file exists), tool configuration, the table path, the task column name, and the 0-based qsv positional index from the manager. After execution, the dev agent SHALL run self-validation against the Validation criteria, retry up to 2 times if self-validation fails (refining its approach in-memory across retries), report step improvement recommendations to the manager, and write its own status transition to `table.csv` using `flock -x <table_path> qsv edit -i`.
 
 #### Scenario: Dev executes task steps
-- **WHEN** the dev agent is invoked for task "create_page" on item row 5
-- **THEN** it SHALL follow the Steps section of the task file, substituting `{column_name}` placeholders with values from row 5's metadata columns, `{ENV:VAR_NAME}` placeholders with values from the shift's `.env` file, and `{SHIFT:FOLDER}`, `{SHIFT:NAME}`, and `{SHIFT:TABLE}` placeholders with the shift directory path, shift name, and table file path respectively
+- **WHEN** the dev agent is invoked for task "create_page" on an item at qsv index 4
+- **THEN** it SHALL follow the Steps section of the task file, substituting `{column_name}` placeholders with values from the item's metadata columns, `{ENV:VAR_NAME}` placeholders with values from the shift's `.env` file, and `{SHIFT:FOLDER}`, `{SHIFT:NAME}`, and `{SHIFT:TABLE}` placeholders with the shift directory path, shift name, and table file path respectively
 
 #### Scenario: Dev writes done status on success
 - **WHEN** the dev agent completes execution with `overall_status: "SUCCESS"` (self-validation passed)
@@ -84,8 +84,8 @@ The system SHALL define a `nightshift-dev` subagent that executes task steps on 
 Each dev agent invocation SHALL operate with a fresh context containing only the task instructions and current item metadata — not the full shift history or other item results.
 
 #### Scenario: Dev gets clean context
-- **WHEN** the manager delegates item row 10 to the dev agent
-- **THEN** the dev agent SHALL receive only: the task file content, row 10's metadata from table.csv, and any task-specific configuration — not results from rows 1-9
+- **WHEN** the manager delegates an item at qsv index 9 to the dev agent
+- **THEN** the dev agent SHALL receive only: the task file content, that item's metadata from table.csv, and any task-specific configuration — not results from other items
 
 ### Requirement: Dev agent self-validation
 The dev agent SHALL evaluate the task's Validation criteria after completing step execution and before reporting results to the manager. This self-validation is the sole determination of item success or failure.

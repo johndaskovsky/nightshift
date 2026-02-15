@@ -74,15 +74,11 @@ The system SHALL use `manager.md` as the shift execution manifest. The file SHAL
 - **THEN** it SHALL update the `current-batch-size` field in the Shift Configuration section of `manager.md` to reflect the new batch size
 
 ### Requirement: Table file format
-The system SHALL use `table.csv` as the canonical data store for shift items. The CSV SHALL conform to RFC 4180 standard formatting to ensure compatibility with `qsv` and other CSV tools. The CSV SHALL contain a `row` column, metadata columns for item context, and one status column per task defined in the shift.
+The system SHALL use `table.csv` as the canonical data store for shift items. The CSV SHALL conform to RFC 4180 standard formatting to ensure compatibility with `qsv` and other CSV tools. The CSV SHALL contain metadata columns for item context and one status column per task defined in the shift.
 
 #### Scenario: Table structure with tasks
 - **WHEN** a shift has tasks "create_page" and "update_spreadsheet"
-- **THEN** `table.csv` SHALL contain columns `row`, any item metadata columns, `create_page` (status), and `update_spreadsheet` (status)
-
-#### Scenario: Row numbering
-- **WHEN** items are added to the table
-- **THEN** the `row` column SHALL contain sequential integers starting from 1
+- **THEN** `table.csv` SHALL contain any item metadata columns, `create_page` (status), and `update_spreadsheet` (status)
 
 #### Scenario: Initial status values
 - **WHEN** a new table is created with items

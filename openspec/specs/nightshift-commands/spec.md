@@ -14,7 +14,7 @@ The system SHALL provide a `/nightshift-create` command that scaffolds a new shi
 
 #### Scenario: Create shift with name only
 - **WHEN** user runs `/nightshift-create my-batch-job`
-- **THEN** the system SHALL create `.nightshift/my-batch-job/` containing `manager.md` with default template and an empty `table.csv` with only the `row` column
+- **THEN** the system SHALL create `.nightshift/my-batch-job/` containing `manager.md` with default template and an empty `table.csv` with no columns (header row added when tasks are defined)
 
 #### Scenario: Create shift interactively
 - **WHEN** user runs `/nightshift-create` without a name
@@ -104,13 +104,13 @@ The system SHALL provide a `/nightshift-add-task` command that adds a new task f
 ### Requirement: Test task command
 The system SHALL provide a `/nightshift-test-task` command that executes a single task on a single table row for testing without modifying table state. Row data SHALL be read using `qsv slice` and `qsv select`.
 
-#### Scenario: Test specific task and row
-- **WHEN** user runs `/nightshift-test-task my-batch-job` and specifies task "create_page" and row 3
-- **THEN** the system SHALL extract row 3's data using `qsv slice --index 2 table.csv`, execute the task steps, run self-validation, and display the full results without updating table.csv
+#### Scenario: Test specific task and item
+- **WHEN** user runs `/nightshift-test-task my-batch-job` and specifies task "create_page" and item 3 (1-based display label)
+- **THEN** the system SHALL extract the item's data using `qsv slice --index 2 table.csv` (converting 1-based display label to 0-based qsv index), execute the task steps, run self-validation, and display the full results without updating table.csv
 
-#### Scenario: Test prompts for task and row
-- **WHEN** user runs `/nightshift-test-task my-batch-job` without specifying task or row
-- **THEN** the system SHALL use `qsv headers --just-names` to list available task columns and prompt for task selection, then use `qsv count` to determine valid row range and prompt for row number
+#### Scenario: Test prompts for task and item
+- **WHEN** user runs `/nightshift-test-task my-batch-job` without specifying task or item
+- **THEN** the system SHALL use `qsv headers --just-names` to list available task columns and prompt for task selection, then use `qsv count` to determine the valid item range and prompt for an item number (displayed as 1-based)
 
 #### Scenario: Test reports detailed results
 - **WHEN** a test-task execution completes
@@ -121,7 +121,7 @@ The system SHALL provide a `/nightshift-update-table` command that supports bulk
 
 #### Scenario: Add rows from data source
 - **WHEN** user runs `/nightshift-update-table my-batch-job` and provides new item data
-- **THEN** the system SHALL construct a temporary CSV with the new rows and append them to `table.csv` using `qsv cat rows`, with sequential row numbers continuing from the last row and all task status columns set to `todo`
+- **THEN** the system SHALL construct a temporary CSV with the new rows and append them to `table.csv` using `qsv cat rows`, with all task status columns set to `todo`
 
 #### Scenario: Modify metadata columns
 - **WHEN** user requests updating a metadata column across multiple rows

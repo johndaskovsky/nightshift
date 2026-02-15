@@ -13,7 +13,7 @@ The system SHALL require [qsv](https://github.com/dathere/qsv) as the CLI tool f
 The system SHALL update individual cell values in `table.csv` using `flock -x <table_path> qsv edit` with the `-i` (in-place) flag. The column SHALL be specified by name and the row by 0-based index. All cell updates SHALL be wrapped with `flock -x` for exclusive file locking.
 
 #### Scenario: Update a status cell
-- **WHEN** any agent needs to set row 3's `create_page` status to `qa`
+- **WHEN** any agent needs to set the item at position 2's `create_page` status to `qa`
 - **THEN** it SHALL execute `flock -x <table_path> qsv edit -i <table_path> create_page 2 qa`
 
 #### Scenario: In-place edit creates backup
@@ -21,19 +21,19 @@ The system SHALL update individual cell values in `table.csv` using `flock -x <t
 - **THEN** a `table.csv.bak` file SHALL be created automatically by qsv as a backup of the previous state
 
 ### Requirement: Cell read operations
-The system SHALL read individual cell values from `table.csv` by piping `flock -x <table_path> qsv slice` into `qsv select`. The row index SHALL be 0-based (excluding the header row), requiring a conversion from Nightshift's 1-based `row` column: `qsv_index = row_number - 1`. All read operations SHALL be wrapped with `flock -x` for consistent reads.
+The system SHALL read individual cell values from `table.csv` by piping `flock -x <table_path> qsv slice` into `qsv select`. The row index SHALL be 0-based (excluding the header row), corresponding directly to the item's physical position in the CSV. All read operations SHALL be wrapped with `flock -x` for consistent reads.
 
 #### Scenario: Read a single cell value
-- **WHEN** any agent needs the `create_page` status for row 3
-- **THEN** it SHALL execute `flock -x <table_path> qsv slice --index 2 <table_path> | qsv select create_page` (index 2 because row 3 maps to 0-based index 2)
+- **WHEN** any agent needs the `create_page` status for the item at position 2 (0-based)
+- **THEN** it SHALL execute `flock -x <table_path> qsv slice --index 2 <table_path> | qsv select create_page`
 
 #### Scenario: Read an entire row
-- **WHEN** any agent needs all metadata for row 5
+- **WHEN** any agent needs all metadata for the item at position 4 (0-based)
 - **THEN** it SHALL execute `flock -x <table_path> qsv slice --index 4 <table_path>`
 
 #### Scenario: Read a column across all rows
 - **WHEN** any agent needs all values from the `create_page` column
-- **THEN** it SHALL execute `flock -x <table_path> qsv select row,create_page <table_path>`
+- **THEN** it SHALL execute `flock -x <table_path> qsv select create_page <table_path>`
 
 ### Requirement: Row counting
 The system SHALL count data rows in `table.csv` using `flock -x <table_path> qsv count`, which excludes the header row.

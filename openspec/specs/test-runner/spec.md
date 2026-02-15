@@ -76,7 +76,7 @@ The system SHALL include a test that validates the `nightshift-create` command p
 
 #### Scenario: Create command table structure
 - **WHEN** the runner validates the created `table.csv`
-- **THEN** the file SHALL contain a header row with at minimum the `row` column
+- **THEN** the file SHALL contain a header row with no pre-defined columns (columns are added when tasks are defined)
 
 ### Requirement: Nightshift-add-task command test
 The system SHALL include a test that validates the `nightshift-add-task` command adds a task to an existing shift.

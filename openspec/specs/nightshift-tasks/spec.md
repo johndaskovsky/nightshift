@@ -27,11 +27,11 @@ The Configuration section SHALL declare the tools and optional model suggestion 
 - **THEN** the executing agent SHALL have access to default tools only (read, write, edit, glob, grep)
 
 ### Requirement: Task steps section
-The Steps section SHALL contain numbered instructions that the dev agent follows to execute the task on a single table item. Steps SHALL be detailed enough for unsupervised execution. The manager agent SHALL apply step improvements to the task file based on dev agent recommendations between items or batches, but SHALL only incorporate recommendations from dev processes that completed successfully. Recommendations from failed dev processes SHALL be discarded. The dev agent SHALL NOT directly edit the Steps section. Steps MAY reference environment variables using `{ENV:VAR_NAME}` syntax, shift metadata using `{SHIFT:FOLDER}`, `{SHIFT:NAME}`, or `{SHIFT:TABLE}` syntax, and table column data using `{column_name}` syntax.
+The Steps section SHALL contain numbered instructions that the dev agent follows to execute the task on a single table item. Steps SHALL be detailed enough for unsupervised execution. The manager agent SHALL apply step improvements to the task file based on dev agent recommendations between items or batches, but SHALL only incorporate recommendations from dev processes that completed successfully. Recommendations from failed dev processes SHALL be discarded. The dev agent SHALL NOT directly edit the Steps section. Steps MAY reference environment variables using `{ENV:VAR_NAME}` syntax, shift metadata using `{SHIFT:FOLDER}`, `{SHIFT:NAME}`, or `{SHIFT:TABLE}` syntax, and table column data using `{column_name}` syntax (where `column_name` corresponds to a metadata column in table.csv).
 
 #### Scenario: Steps reference table metadata
 - **WHEN** steps reference item data using `{column_name}` placeholders
-- **THEN** the dev agent SHALL substitute the actual values from the current table row before execution
+- **THEN** the dev agent SHALL substitute the actual values from the current table item's metadata columns before execution
 
 #### Scenario: Steps reference environment variables
 - **WHEN** steps reference environment variables using `{ENV:VAR_NAME}` placeholders
@@ -75,9 +75,9 @@ The Validation section SHALL describe criteria the dev agent uses for self-valid
 ### Requirement: Task test execution
 The system SHALL support running a single task on a single table item for testing purposes, without affecting other items or tasks in the shift.
 
-#### Scenario: Test a task on one row
-- **WHEN** a user invokes test-task for task "create_page" on row 5
-- **THEN** the system SHALL execute the task steps on row 5 only, run self-validation, and report the result without updating the table status
+#### Scenario: Test a task on one item
+- **WHEN** a user invokes test-task for task "create_page" on item 5 (1-based display label)
+- **THEN** the system SHALL execute the task steps on the item at qsv index 4 (0-based) only, run self-validation, and report the result without updating the table status
 
 #### Scenario: Test preserves table state
 - **WHEN** a test-task execution completes

@@ -69,7 +69,7 @@ Items are either `todo` (available for dev processing), `done`, or `failed`. On 
 Use `qsv` to read item statuses when determining what to process next:
 
 ```bash
-# Read a specific cell: status of task "create_page" for row 3 (qsv_index = 2)
+# Read a specific cell: status of task "create_page" for item at position 2 (0-based)
 flock -x table.csv qsv slice --index 2 table.csv | qsv select create_page
 
 # Read all data for a row
@@ -87,7 +87,7 @@ flock -x table.csv qsv count table.csv
 Process items using this algorithm:
 
 ```
-for each row in table.csv (ordered by row number):
+for each row in table.csv (ordered by position):
   for each task in Task Order (from manager.md):
     status = row[task_column]
     
@@ -104,7 +104,7 @@ for each row in table.csv (ordered by row number):
 ```
 
 This ensures:
-- Items are processed row-by-row
+- Items are processed in order
 - Tasks within an item follow the defined order
 - A failed prerequisite task blocks subsequent tasks for that item
 - Items already `done` for all tasks are skipped entirely
@@ -118,7 +118,7 @@ batch_size = current_batch_size (from Shift Configuration, default 2)
 max_batch = max_batch_size (from Shift Configuration, or unlimited if omitted)
 batch = []
 
-for each row in table.csv (ordered by row number):
+for each row in table.csv (ordered by position):
   for each task in Task Order (from manager.md):
     status = row[task_column]
     
@@ -150,7 +150,7 @@ For the selected item-task:
 
 1. Read the task file (`<task-name>.md`) from the shift directory
 2. Read the `.env` file from the shift directory (if it exists) and parse it as key-value pairs (one `KEY=VALUE` per line, `#` lines are comments, blank lines ignored)
-3. Extract the item's row data using `flock -x table.csv qsv slice --index <qsv_index> table.csv`
+3. Extract the item's data using `flock -x table.csv qsv slice --index <qsv_index> table.csv`
 4. Invoke the `nightshift-dev` agent via the **Task tool** with this prompt:
 
 ```
@@ -165,8 +165,8 @@ You are executing Nightshift task "<task-name>" on a single item.
 ## Task File
 <full contents of task-name.md — including Configuration, Steps, AND Validation sections>
 
-## Item Data (Row <N>)
-<all column values for this row as key: value pairs>
+## Item Data (Index <qsv_index>)
+<all column values for this item as key: value pairs>
 
 ## Environment Variables
 <key: value pairs from .env file, or "(none)" if no .env file exists>
@@ -206,10 +206,10 @@ For the collected batch of item-tasks:
 
 1. Read the task file (`<task-name>.md`) from the shift directory (shared across all items in the batch)
 2. Read the `.env` file from the shift directory (if it exists) and parse it as key-value pairs
-3. Extract each item's row data using `flock -x table.csv qsv slice --index <qsv_index> table.csv`
+3. Extract each item's data using `flock -x table.csv qsv slice --index <qsv_index> table.csv`
 4. Invoke N `nightshift-dev` agents via **N parallel Task tool calls in a single message** — one per batch item, each with the same prompt format as sequential mode but with different item data and `qsv_index` values
 
-Each dev agent receives the same task file contents and environment variables but different `## Item Data (Row <N>)` and `## State Update` values. All N Task tool calls must be issued in a single message to enable concurrent execution. Each dev agent is responsible for writing its own status transition (`done` or `failed`) to `table.csv`.
+Each dev agent receives the same task file contents and environment variables but different `## Item Data (Index <qsv_index>)` and `## State Update` values. All N Task tool calls must be issued in a single message to enable concurrent execution. Each dev agent is responsible for writing its own status transition (`done` or `failed`) to `table.csv`.
 
 ### 5. Apply Step Improvements
 
@@ -292,13 +292,13 @@ Where M = items with all tasks `done`, F = items where any task is `failed`, der
 
 All CSV operations on `table.csv` use `flock -x` prefixed `qsv` CLI commands via the Bash tool. Never read or write `table.csv` with the Read/Write/Edit tools directly.
 
-**Row index mapping:** qsv uses 0-based row indices (excluding the header row). Nightshift's `row` column is 1-based. Always convert: `qsv_index = row_number - 1`.
+**Row indexing:** qsv uses 0-based row indices (excluding the header row). The index corresponds directly to the item's physical position in the CSV.
 
 | Operation | Command |
 |---|---|
 | Read a cell | `flock -x table.csv qsv slice --index <qsv_index> table.csv \| qsv select <column>` |
 | Read a row | `flock -x table.csv qsv slice --index <qsv_index> table.csv` |
-| Read a column | `flock -x table.csv qsv select row,<column> table.csv` |
+| Read a column | `flock -x table.csv qsv select <column> table.csv` |
 | Update a cell | `flock -x table.csv qsv edit -i table.csv <column> <qsv_index> <value>` |
 | Count rows | `flock -x table.csv qsv count table.csv` |
 | Filter by value | `flock -x table.csv qsv search --exact <value> --select <column> table.csv` |
@@ -311,7 +311,7 @@ All CSV operations on `table.csv` use `flock -x` prefixed `qsv` CLI commands via
 **Examples:**
 
 ```bash
-# Update row 3's create_page status to done (qsv_index = 3 - 1 = 2)
+# Update item at position 2's create_page status to done
 flock -x table.csv qsv edit -i table.csv create_page 2 done
 
 # Find all todo items for create_page
@@ -320,7 +320,7 @@ flock -x table.csv qsv search --exact todo --select create_page table.csv
 # Count done items
 flock -x table.csv qsv search --exact done --select create_page table.csv | qsv count
 
-# Read row 5's data (qsv_index = 4)
+# Read item at position 4's data
 flock -x table.csv qsv slice --index 4 table.csv
 ```
 

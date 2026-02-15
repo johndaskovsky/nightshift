@@ -26,7 +26,7 @@ pnpm install
 | `/nightshift-add-task <name>` | Add a task to an existing shift |
 | `/nightshift-update-table <name>` | Bulk modify table data |
 | `/nightshift-start <name>` | Begin or resume shift execution |
-| `/nightshift-test-task <name>` | Test a single task on one row (no state changes) |
+| `/nightshift-test-task <name>` | Test a single task on one item (no state changes) |
 | `/nightshift-archive <name>` | Archive a completed shift |
 
 ### Testing a single task
@@ -37,7 +37,7 @@ The closest equivalent to "running a single test" is:
 /nightshift-test-task <shift-name>
 ```
 
-This prompts you to select a task and row, invokes the dev agent, then the QA agent, and displays results **without modifying `table.csv`**.
+This prompts you to select a task and item, invokes the dev agent, then the QA agent, and displays results **without modifying `table.csv`**.
 
 ### OpenSpec validation
 
@@ -55,7 +55,7 @@ night-shift/
 ├── .nightshift/                    # Runtime shift data
 │   ├── <shift-name>/               # Active shift directories
 │   │   ├── manager.md              # Shift config (tasks, column mapping)
-│   │   ├── table.csv               # Item tracking (row, columns, task statuses)
+│   │   ├── table.csv               # Item tracking (columns, task statuses)
 │   │   └── <task-name>.md          # Task definitions (config, steps, validation)
 │   └── archive/                    # Completed shifts (date-prefixed)
 ├── .opencode/                      # OpenCode tooling config
@@ -148,7 +148,6 @@ Note: Nightshift does not manage or template `opencode.jsonc` for target project
 ### CSV conventions
 
 - Header row required
-- `row` as first column (sequential integer)
 - Status columns named after tasks (snake_case — no hyphens, which conflict with qsv selectors)
 - No quoting unless needed
 

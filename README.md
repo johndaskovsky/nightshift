@@ -102,7 +102,7 @@ The command asks you to describe what the agent should do, what tools it needs, 
 
 Steps use template variables that get substituted before execution. Three types are supported:
 
-- `{column_name}` -- row data from `table.csv` (e.g., `{url}`, `{page_title}`)
+- `{column_name}` -- item data from `table.csv` (e.g., `{url}`, `{page_title}`)
 - `{ENV:VAR_NAME}` -- values from the shift's `.env` file (e.g., `{ENV:BASE_URL}`, `{ENV:API_KEY}`)
 - `{SHIFT:FOLDER}` / `{SHIFT:NAME}` / `{SHIFT:TABLE}` -- shift metadata (directory path, shift name, and table file path)
 
@@ -117,10 +117,10 @@ See [Template Variables](#template-variables) for details.
 Add rows with the metadata columns your tasks reference. The resulting `table.csv` looks like:
 
 ```csv
-row,url,page_title,create_page
-1,https://example.com/site1,Welcome,todo
-2,https://example.com/site2,About Us,todo
-3,https://example.com/site3,Contact,todo
+url,page_title,create_page
+https://example.com/site1,Welcome,todo
+https://example.com/site2,About Us,todo
+https://example.com/site3,Contact,todo
 ```
 
 Each task gets a status column initialized to `todo`.
@@ -139,7 +139,7 @@ The manager agent takes over: it reads the table, picks the next `todo` item, de
 /nightshift-test-task my-batch-job
 ```
 
-Runs one task on one row through both dev and QA agents **without modifying any state**. Useful for debugging task definitions before running a full shift.
+Runs one task on one item through both dev and QA agents **without modifying any state**. Useful for debugging task definitions before running a full shift.
 
 ### 6. Archive a completed shift
 
@@ -157,7 +157,7 @@ Moves the shift to `.nightshift/archive/YYYY-MM-DD-my-batch-job/`.
 | `/nightshift-add-task <name>` | Add a task definition to an existing shift |
 | `/nightshift-update-table <name>` | Add rows, update metadata, or reset failed items |
 | `/nightshift-start <name>` | Begin or resume shift execution |
-| `/nightshift-test-task <name>` | Dry-run a single task on a single row |
+| `/nightshift-test-task <name>` | Dry-run a single task on a single item |
 | `/nightshift-archive <name>` | Move a completed shift to the archive |
 
 All commands accept a shift name as an argument, or prompt interactively if omitted.
@@ -209,10 +209,10 @@ The `parallel`, `current-batch-size`, and `max-batch-size` fields are optional. 
 Each row is an item. Metadata columns hold the data tasks need. Status columns (one per task) track progress.
 
 ```csv
-row,url,page_title,create_page,update_cms
-1,https://example.com/site1,Welcome,done,qa
-2,https://example.com/site2,About Us,todo,todo
-3,https://example.com/site3,Contact,todo,todo
+url,page_title,create_page,update_cms
+https://example.com/site1,Welcome,done,qa
+https://example.com/site2,About Us,todo,todo
+https://example.com/site3,Contact,todo,todo
 ```
 
 Status values: `todo`, `qa`, `done`, `failed`.
@@ -231,13 +231,13 @@ Each task has three sections. Only the Steps section is modified during executio
 
 ### Item processing order
 
-The manager iterates rows in order, tasks in the order listed in `manager.md`. Tasks within a row are sequential -- task 2 cannot start until task 1 is `done`. A `failed` task blocks all subsequent tasks for that row.
+The manager iterates items in order, tasks in the order listed in `manager.md`. Tasks within an item are sequential -- task 2 cannot start until task 1 is `done`. A `failed` task blocks all subsequent tasks for that item.
 
 ### Dev agent retry loop
 
 The dev agent gets up to 3 attempts per item (1 initial + 2 retries). On each attempt it:
 
-1. Substitutes all template variables from the current row, environment, and shift metadata
+1. Substitutes all template variables from the current item, environment, and shift metadata
 2. Executes steps sequentially, stopping on failure
 3. Identifies step improvement recommendations
 4. Self-validates against the Validation criteria
@@ -260,7 +260,7 @@ A single item failure never stops the entire shift. The manager marks the failed
 
 ### Parallel execution
 
-By default, the manager processes one row at a time. To enable parallel processing, add `parallel: true` to the Shift Configuration section of `manager.md`:
+By default, the manager processes one item at a time. To enable parallel processing, add `parallel: true` to the Shift Configuration section of `manager.md`:
 
 ```markdown
 ## Shift Configuration
@@ -270,7 +270,7 @@ By default, the manager processes one row at a time. To enable parallel processi
 - parallel: true
 ```
 
-In parallel mode, the manager dispatches multiple rows concurrently for each task using adaptive batch sizing. Two optional fields control batch behavior:
+In parallel mode, the manager dispatches multiple items concurrently for each task using adaptive batch sizing. Two optional fields control batch behavior:
 
 | Field | Default | Description |
 |-------|---------|-------------|
@@ -291,7 +291,7 @@ In parallel mode, the manager dispatches multiple rows concurrently for each tas
 
 Both `current-batch-size` and `max-batch-size` are ignored when `parallel` is not `true`. Invalid values (non-positive or non-numeric) are treated as omitted.
 
-Parallelism applies only across rows for a single task. Tasks within a row remain strictly sequential per the task order.
+Parallelism applies only across items for a single task. Tasks within an item remain strictly sequential per the task order.
 
 ## Template Variables
 
@@ -334,7 +334,7 @@ Reference shift-level metadata. Three variables are available:
 - `{SHIFT:TABLE}` -- the full path to the shift's `table.csv` (e.g., `.nightshift/my-batch-job/table.csv`)
 
 ```markdown
-1. Save the output to {SHIFT:FOLDER}output/{row}.json
+1. Save the output to {SHIFT:FOLDER}output/{SHIFT:NAME}-output.json
 ```
 
 ### Error handling

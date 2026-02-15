@@ -48,7 +48,6 @@ Bulk modify the table.csv of a shift — add rows, update metadata, or reset fai
 
    **Add rows:**
    - Ask user for the data (they can paste CSV, describe items, or point to a data source)
-   - Assign sequential row numbers continuing from the last row (use `flock -x table.csv qsv count table.csv` to determine the next row number)
    - Set all task status columns to `todo` for new rows
    - Write the new rows to a temporary CSV file with matching headers
    - Append using `flock -x` prefixed `qsv cat rows`:
@@ -61,10 +60,10 @@ Bulk modify the table.csv of a shift — add rows, update metadata, or reset fai
    - Ask which column and which rows to update
    - Show a preview of the changes
    - Confirm before applying
-   - Update cells using `flock -x` prefixed `qsv edit -i` (remember `qsv_index = row_number - 1`):
-     ```bash
-     flock -x table.csv qsv edit -i table.csv <column> <qsv_index> <new_value>
-     ```
+   - Update cells using `flock -x` prefixed `qsv edit -i`:
+      ```bash
+      flock -x table.csv qsv edit -i table.csv <column> <qsv_index> <new_value>
+      ```
 
    **Reset failed items:**
    - Ask which task column to reset (or all tasks)
@@ -98,7 +97,7 @@ Bulk modify the table.csv of a shift — add rows, update metadata, or reset fai
 
 **Guardrails**
 - Always confirm before modifying existing data
-- Preserve row numbering continuity when adding rows
+- Preserve item ordering when adding rows
 - Set all task columns to `todo` for new rows
 - Never reorder existing rows
 - Show the user what will change before applying
