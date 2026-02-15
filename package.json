@@ -1,6 +1,6 @@
 {
   "name": "@johndaskovsky/nightshift",
-  "version": "0.1.4",
+  "version": "1.0.0",
   "description": "CLI installer for the Nightshift AI agent orchestration framework",
   "type": "module",
   "bin": {
