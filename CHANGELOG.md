@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.1] - 2026-02-19
+
+### Added
+
+- Add .nightshift/.gitignore scaffolding
+
+Closes #4 - Add framework-managed .nightshift/.gitignore generation to init and update. Implements writeGitignoreFile() in src/core/scaffolder.ts (writes a single-line `table.csv.bak\n`, overwriting existing file), exports it from src/index.ts, and invokes it from src/cli/commands/init.ts and src/cli/commands/update.ts (update uses force:true). Tests updated to verify the file exists and contains the pattern, and OpenSpec docs/specs/tasks were added/updated to describe the change and summary output.
+- Add npm badges and update package metadata
+
+Add npm version and download badges to README.md. Reorganize package.json to include metadata for npm/GitHub (keywords, homepage, bugs, repository, author, license) and move/add packageManager; remove duplicate fields. This cleans up manifest and prepares the package for publishing and linking to the repository/issues.
+
+### Changed
+
+- Update changelog [skip ci]
+
+### Other
+
+- Consolidate init/update into single init
+
+Remove the redundant `nightshift update` command and fold its behavior into `nightshift init`. `init` no longer accepts `--force`/`--yes` and now detects first-run vs re-run by checking `.opencode/agent/nightshift-manager.md` to adjust banners, spinner text, and footer messaging. Deleted src/cli/commands/update.ts, removed `force` from ScaffoldOptions and scaffolder calls, updated CLI registration, documentation (README.md, AGENTS.md) and specs to reflect the single-command model, and added an OpenSpec archive describing the change.
+
 ## [1.0.0] - 2026-02-15
 
 ### Added
@@ -13,7 +34,6 @@ Archive the add-auto-release-generation change set under openspec/changes/archiv
 
 Introduce a shared dependency checker (src/core/dependencies.ts) that runs `qsv --version` and `flock --version` with a timeout and returns structured availability/version info. Call this utility from `nightshift init` and `nightshift update` (src/cli/commands/init.ts, src/cli/commands/update.ts) to print a `--- Dependencies ---` summary showing ✓ for present tools or a warning with `brew install ...` instructions for missing tools (non-blocking). Remove the redundant pre-flight dependency checks and version lines from the `nightshift-start` template and update related specs and openspec change archives accordingly. Also update benchmarks metadata.
 
-```
 ================================================================================
 TEST RESULTS
 ================================================================================
@@ -23,7 +43,6 @@ init                         PASS      11/11       1.4s          SLOW (+16.2%)
 nightshift-start             PASS      3/3         2m 41s        FASTER (-4.6%)
 nightshift-start-parallel    PASS      3/3         2m 5s         FASTER (-7.0%)
 --------------------------------------------------------------------------
-```
 
 ### Changed
 
@@ -50,7 +69,6 @@ Update repository docs and OpenSpec files to match the implemented two-agent mod
 
 Remove redundant QA and compaction-recovery overhead from Nightshift orchestration. This change deletes the QA subagent and its template, removes compaction detection and the supervisor's replay loop, eliminates the denormalized ## Progress writes from manager.md, and aligns the state machine to three statuses (todo, done, failed) by removing qa and in_progress. The dev agent now writes done/failed directly; the manager runs once per invocation, derives final counts from table.csv via qsv, and continues autonomous batch processing (with adaptive parallel batching preserved). Updated: templates, specs, installer, scaffolder, commands, tests, and migration tasks (existing shifts with qa-status rows must be migrated via qsv edit).
 
-```
 ================================================================================
 TEST RESULTS
 ================================================================================
@@ -60,8 +78,6 @@ init                         PASS      11/11       1.2s          FASTER (-0.1%)
 nightshift-start             PASS      3/3         2m 58s        FASTER (-30.3%)
 nightshift-start-parallel    PASS      3/3         2m 15s        FASTER (-13.4%)
 --------------------------------------------------------------------------
-```
-
 - Remove row column; use positional item indices
 
 Remove the redundant `row` column from the Nightshift data model and switch agents/commands to use qsv's 0-based positional indices. Update documentation and templates (AGENTS.md, README.md, various templates) to refer to "items" instead of "rows", change test-task prompts to display 1-based labels while converting to 0-based indices internally, and stop scaffolding/maintaining `row` numbering when creating or updating tables. Add an OpenSpec archived change set (2026-02-15) and corresponding modified specs to reflect the new behavior for agents, commands, CSV operations, tasks, and tests. This simplifies index handling (removes the qsv_index = row_number - 1 conversion) and keeps backward compatibility for existing tables that still include a `row` column.
