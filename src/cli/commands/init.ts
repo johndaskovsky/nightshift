@@ -5,6 +5,7 @@ import {
   scaffoldDirectories,
   writeAgentFiles,
   writeCommandFiles,
+  writeGitignoreFile,
 } from "../../core/scaffolder.js";
 import { checkDependencies } from "../../core/dependencies.js";
 
@@ -65,6 +66,21 @@ export function createInitCommand(): Command {
       } catch (err) {
         cmdSpinner.fail("Failed to write command files");
         warnings.push(`Command files: ${err instanceof Error ? err.message : String(err)}`);
+        hasError = true;
+      }
+
+      // Step 4: Write .gitignore file
+      const gitignoreSpinner = ora("Writing .gitignore...").start();
+      try {
+        const result = writeGitignoreFile({
+          targetDir,
+          force,
+          onWrite: (path, action) => actions.push({ path, action }),
+        });
+        gitignoreSpinner.succeed(`.gitignore written (${result.actions.length} file)`);
+      } catch (err) {
+        gitignoreSpinner.fail("Failed to write .gitignore");
+        warnings.push(`.gitignore: ${err instanceof Error ? err.message : String(err)}`);
         hasError = true;
       }
 

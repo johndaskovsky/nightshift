@@ -548,6 +548,17 @@ const tests: TestDefinition[] = [
         type: "file",
         path: ".opencode/command/nightshift-archive.md",
       },
+      {
+        label: ".nightshift/.gitignore exists",
+        type: "file",
+        path: ".nightshift/.gitignore",
+      },
+      {
+        label: ".nightshift/.gitignore contains table.csv.bak",
+        type: "content",
+        path: ".nightshift/.gitignore",
+        contains: "table.csv.bak",
+      },
     ],
   },
 

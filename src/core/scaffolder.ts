@@ -76,3 +76,19 @@ export function writeCommandFiles(options: ScaffoldOptions): ScaffoldResult {
   return result;
 }
 
+/**
+ * Write the .nightshift/.gitignore file to the target project.
+ */
+export function writeGitignoreFile(options: ScaffoldOptions): ScaffoldResult {
+  const result: ScaffoldResult = { actions: [] };
+  const content = "table.csv.bak\n";
+  const targetPath = join(options.targetDir, ".nightshift", ".gitignore");
+  const action = existsSync(targetPath) ? "updated" : "created";
+
+  writeFileSync(targetPath, content, "utf-8");
+  result.actions.push({ path: targetPath, action });
+  options.onWrite?.(targetPath, action);
+
+  return result;
+}
+
