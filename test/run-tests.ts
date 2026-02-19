@@ -6,6 +6,13 @@
  * Executes integration tests for the Nightshift CLI and OpenCode commands.
  * Tests run sequentially in dependency order, tracking accuracy and performance.
  *
+ * Test execution order:
+ *   1. init
+ *   2. nightshift-start
+ *   3. nightshift-start-parallel
+ *   4. nightshift-start-no-self-improvement
+ *   5. nightshift-start-parallel-no-self-improvement
+ *
  * Usage: pnpm test
  */
 
@@ -418,6 +425,31 @@ const FIXTURE_MANAGER_PARALLEL = `## Shift Configuration
 1. ${FIXTURE_TASK_NAME}
 `;
 
+const FIXTURE_MANAGER_NO_SELF_IMPROVEMENT = `## Shift Configuration
+
+- name: ${TEST_SHIFT_NAME}
+- created: 2026-01-01
+- disable-self-improvement: true
+
+## Task Order
+
+1. ${FIXTURE_TASK_NAME}
+`;
+
+const FIXTURE_MANAGER_PARALLEL_NO_SELF_IMPROVEMENT = `## Shift Configuration
+
+- name: ${TEST_SHIFT_NAME}
+- created: 2026-01-01
+- parallel: true
+- current-batch-size: 3
+- max-batch-size: 3
+- disable-self-improvement: true
+
+## Task Order
+
+1. ${FIXTURE_TASK_NAME}
+`;
+
 const FIXTURE_TABLE_EMPTY = `row\n`;
 
 const FIXTURE_TABLE_WITH_TASK = `row,${FIXTURE_TASK_NAME}\n`;
@@ -598,6 +630,60 @@ const tests: TestDefinition[] = [
       cleanShift();
       setupShift({
         manager: FIXTURE_MANAGER_PARALLEL,
+        table: FIXTURE_TABLE_WITH_DATA,
+        taskFile: { name: FIXTURE_TASK_NAME, content: FIXTURE_TASK_FILE },
+      });
+      await runOpenCodeCommand(
+        "nightshift-start",
+        `${TEST_SHIFT_NAME} -- Start the shift immediately. Do not ask for confirmation.`,
+      );
+    },
+    checks: () => {
+      const shiftDir = `.nightshift/${TEST_SHIFT_NAME}`;
+      return [
+        { label: "alpha.txt exists", type: "file" as const, path: `${shiftDir}/alpha.txt` },
+        { label: "beta.txt exists", type: "file" as const, path: `${shiftDir}/beta.txt` },
+        { label: "gamma.txt exists", type: "file" as const, path: `${shiftDir}/gamma.txt` },
+      ];
+    },
+  },
+
+  // -- 4. nightshift-start-no-self-improvement test --
+  // Fixture: shift with task, 3 rows all at "todo", disable-self-improvement: true
+  {
+    name: "nightshift-start-no-self-improvement",
+    run: async () => {
+      ensureInit();
+      cleanShift();
+      setupShift({
+        manager: FIXTURE_MANAGER_NO_SELF_IMPROVEMENT,
+        table: FIXTURE_TABLE_WITH_DATA,
+        taskFile: { name: FIXTURE_TASK_NAME, content: FIXTURE_TASK_FILE },
+      });
+      await runOpenCodeCommand(
+        "nightshift-start",
+        `${TEST_SHIFT_NAME} -- Start the shift immediately. Do not ask for confirmation.`,
+      );
+    },
+    checks: () => {
+      const shiftDir = `.nightshift/${TEST_SHIFT_NAME}`;
+      return [
+        { label: "alpha.txt exists", type: "file" as const, path: `${shiftDir}/alpha.txt` },
+        { label: "beta.txt exists", type: "file" as const, path: `${shiftDir}/beta.txt` },
+        { label: "gamma.txt exists", type: "file" as const, path: `${shiftDir}/gamma.txt` },
+      ];
+    },
+  },
+
+  // -- 5. nightshift-start-parallel-no-self-improvement test --
+  // Fixture: shift with task, 3 rows all at "todo", parallel mode with batch size 3, disable-self-improvement: true
+  {
+    name: "nightshift-start-parallel-no-self-improvement",
+    run: async () => {
+      ensureInit();
+      cleanShift();
+      setupShift({
+        manager: FIXTURE_MANAGER_PARALLEL_NO_SELF_IMPROVEMENT,
         table: FIXTURE_TABLE_WITH_DATA,
         taskFile: { name: FIXTURE_TASK_NAME, content: FIXTURE_TASK_FILE },
       });

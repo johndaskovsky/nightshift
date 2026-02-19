@@ -51,6 +51,8 @@ When `parallel: true`, also read these optional fields from the Shift Configurat
 
 Both fields are ignored when `parallel` is not `true`.
 
+Also check for `disable-self-improvement: true` in the Shift Configuration section. If present and set to `true`, the self-improvement cycle is disabled for this shift: you will skip the Apply Step Improvements step (step 5) and instruct dev agents to skip the Identify Recommendations step. If omitted or set to any other value, self-improvement is enabled (default behavior).
+
 ### 2. Handle Resume
 
 On startup, use `flock -x <table_path> qsv search` to check for items needing processing:
@@ -185,11 +187,14 @@ After execution, you MUST update your status in table.csv:
 - On success: `flock -x <table_path> qsv edit -i <table_path> <task_column> <qsv_index> done`
 - On failure: `flock -x <table_path> qsv edit -i <table_path> <task_column> <qsv_index> failed`
 
+## Self-Improvement
+disable-self-improvement: <true if disable-self-improvement is set in Shift Configuration, otherwise false>
+
 ## Your Responsibilities
 
 1. **Substitute placeholders**: Replace `{column_name}` placeholders with item data values, `{ENV:VAR_NAME}` placeholders with environment variable values, and `{SHIFT:FOLDER}` / `{SHIFT:NAME}` / `{SHIFT:TABLE}` with shift metadata values. Report an error immediately if any placeholder cannot be resolved.
 2. **Execute steps**: Execute each step sequentially after substitution.
-3. **Report recommendations**: If you identify improvements to the steps, include them in your Recommendations output section. Do NOT edit the task file.
+3. **Report recommendations**: If `disable-self-improvement` is `false`, identify improvements to the steps and include them in your Recommendations output section. If `disable-self-improvement` is `true`, skip this step and return `Recommendations: None`. Do NOT edit the task file.
 4. **Self-validate**: Evaluate each Validation criterion against your execution outcomes. Report pass/fail per criterion.
 5. **Retry on failure**: If self-validation fails, refine your approach in-memory and retry. You have up to 3 total attempts (1 initial + 2 retries).
 6. **Update status**: Write your status to table.csv using the State Update parameters above.
@@ -212,6 +217,8 @@ For the collected batch of item-tasks:
 Each dev agent receives the same task file contents and environment variables but different `## Item Data (Index <qsv_index>)` and `## State Update` values. All N Task tool calls must be issued in a single message to enable concurrent execution. Each dev agent is responsible for writing its own status transition (`done` or `failed`) to `table.csv`.
 
 ### 5. Apply Step Improvements
+
+**Skip this step entirely if `disable-self-improvement: true` is set in the Shift Configuration.** Proceed directly to step 6 (Loop).
 
 After receiving dev results, review the `Recommendations` section of the dev agent's output:
 

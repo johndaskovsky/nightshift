@@ -20,8 +20,8 @@ Nightshift runs inside [OpenCode](https://opencode.ai/) as a set of custom agent
 
 A **shift** is a batch job. It contains a CSV table of items to process and one or more task definitions that describe what to do with each item. Two agents collaborate to execute the work:
 
-- **Manager** -- reads shift state, picks the next item, delegates to dev, applies step improvements from successful dev agents, and reports progress. Writes `manager.md` and task files; reads `table.csv` for status information.
-- **Dev** -- executes task steps on a single item, self-validates, retries up to 3 times, reports step improvement recommendations, and writes its own status to `table.csv` (`done` on success, `failed` on failure).
+- **Manager** -- reads shift state, picks the next item, delegates to dev, applies step improvements from successful dev agents (unless `disable-self-improvement: true` is set), and reports progress. Writes `manager.md` and task files; reads `table.csv` for status information.
+- **Dev** -- executes task steps on a single item, self-validates, retries up to 3 times, reports step improvement recommendations (unless self-improvement is disabled), and writes its own status to `table.csv` (`done` on success, `failed` on failure).
 
 Each item-task moves through a state machine:
 
@@ -183,6 +183,7 @@ Tracks task execution order and progress. Updated automatically by the manager a
 # - parallel: true
 # - current-batch-size: 2
 # - max-batch-size: 10
+# - disable-self-improvement: true
 
 ## Task Order
 
@@ -190,7 +191,7 @@ Tracks task execution order and progress. Updated automatically by the manager a
 2. update_cms
 ```
 
-The `parallel`, `current-batch-size`, and `max-batch-size` fields are optional. See [Parallel Execution](#parallel-execution) for details.
+The `parallel`, `current-batch-size`, `max-batch-size`, and `disable-self-improvement` fields are optional. See [Parallel Execution](#parallel-execution) and [Self-Improvement](#self-improvement) for details.
 
 ### table.csv
 
@@ -280,6 +281,26 @@ In parallel mode, the manager dispatches multiple items concurrently for each ta
 Both `current-batch-size` and `max-batch-size` are ignored when `parallel` is not `true`. Invalid values (non-positive or non-numeric) are treated as omitted.
 
 Parallelism applies only across items for a single task. Tasks within an item remain strictly sequential per the task order.
+
+### Self-improvement
+
+By default, after each successful dev execution the manager reviews the dev's step improvement recommendations and applies them to the task file. This incremental refinement improves execution reliability over time as the manager learns from each item.
+
+To disable this cycle, add `disable-self-improvement: true` to the Shift Configuration section of `manager.md`:
+
+```markdown
+## Shift Configuration
+
+- name: my-batch-job
+- created: 2026-02-08
+- disable-self-improvement: true
+```
+
+When the flag is `true`:
+- The manager skips the Apply Step Improvements step after each dev result
+- The dev agent skips the Identify Recommendations step and always returns `Recommendations: None`
+
+This is useful for shifts with mature, stable task files where the self-improvement cycle adds token overhead without meaningful benefit. Omitting the flag (or setting it to `false`) restores the default behavior.
 
 ## Template Variables
 

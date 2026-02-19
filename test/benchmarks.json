@@ -8,7 +8,15 @@
     "updatedAt": "2026-02-15T15:02:17.391Z"
   },
   "nightshift-start-parallel": {
-    "durationMs": 125262,
-    "updatedAt": "2026-02-15T15:04:22.653Z"
+    "durationMs": 107780,
+    "updatedAt": "2026-02-19T14:56:53.487Z"
+  },
+  "nightshift-start-no-self-improvement": {
+    "durationMs": 134426,
+    "updatedAt": "2026-02-19T14:59:07.913Z"
+  },
+  "nightshift-start-parallel-no-self-improvement": {
+    "durationMs": 93928,
+    "updatedAt": "2026-02-19T15:00:41.841Z"
   }
 }

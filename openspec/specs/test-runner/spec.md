@@ -77,6 +77,20 @@ The system SHALL include a test that validates the `nightshift-start` command in
 - **WHEN** the runner executes `nightshift-start` on a shift with `parallel: true`, `current-batch-size: 3`, and `max-batch-size: 3` in the Shift Configuration section, and the shift has tasks and rows
 - **THEN** `table.csv` SHALL contain at least one row where a task status column has a value other than `todo` (indicating processing occurred)
 
+### Requirement: Nightshift-start-no-self-improvement command test
+The system SHALL include a test that validates the `nightshift-start` command with `disable-self-improvement: true` set in the Shift Configuration section of `manager.md`, confirming that shift execution completes correctly when self-improvement is disabled.
+
+#### Scenario: Start command processes items with self-improvement disabled (serial)
+- **WHEN** the runner executes `nightshift-start` on a shift with `disable-self-improvement: true` in the Shift Configuration section and the shift has tasks and rows
+- **THEN** the expected output files SHALL be created for each item (confirming execution succeeded) and `table.csv` SHALL contain rows with `done` status
+
+### Requirement: Nightshift-start-parallel-no-self-improvement command test
+The system SHALL include a test that validates the `nightshift-start` command in parallel mode with `disable-self-improvement: true` set in the Shift Configuration section of `manager.md`.
+
+#### Scenario: Start command processes items in parallel mode with self-improvement disabled
+- **WHEN** the runner executes `nightshift-start` on a shift with `parallel: true`, `current-batch-size: 3`, `max-batch-size: 3`, and `disable-self-improvement: true` in the Shift Configuration section, and the shift has tasks and rows
+- **THEN** the expected output files SHALL be created for each item (confirming execution succeeded) and `table.csv` SHALL contain rows with `done` status
+
 ### Requirement: Accuracy tracking
 The system SHALL track accuracy for each test as the ratio of expected artifacts that were found to the total number of expected artifacts. Each test definition SHALL declare its expected artifact checklist.
 
@@ -104,7 +118,7 @@ The system SHALL print a summary table to stdout after all tests complete. The s
 - **THEN** the runner SHALL exit with a non-zero exit code and print a summary showing which tests failed and their accuracy ratios
 
 ### Requirement: Test execution order
-The system SHALL execute tests in a fixed sequential order that respects dependencies between commands: `init`, `nightshift-start`, `nightshift-start-parallel`.
+The system SHALL execute tests in a fixed sequential order that respects dependencies between commands: `init`, `nightshift-start`, `nightshift-start-parallel`, `nightshift-start-no-self-improvement`, `nightshift-start-parallel-no-self-improvement`.
 
 #### Scenario: Sequential execution
 - **WHEN** the test runner starts

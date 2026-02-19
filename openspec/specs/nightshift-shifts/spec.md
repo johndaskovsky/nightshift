@@ -27,11 +27,11 @@ The system SHALL require shift names to be kebab-case identifiers (lowercase let
 - **THEN** the system SHALL reject the name and report that kebab-case is required
 
 ### Requirement: Manager file format
-The system SHALL use `manager.md` as the shift execution manifest. The file SHALL contain a Shift Configuration section and a Task Order section. The Shift Configuration section SHALL support an optional `parallel` field, an optional `current-batch-size` field, and an optional `max-batch-size` field. The `current-batch-size` and `max-batch-size` fields SHALL only be meaningful when `parallel: true` is set.
+The system SHALL use `manager.md` as the shift execution manifest. The file SHALL contain a Shift Configuration section and a Task Order section. The Shift Configuration section SHALL support an optional `parallel` field, an optional `current-batch-size` field, an optional `max-batch-size` field, and an optional `disable-self-improvement` field. The `current-batch-size` and `max-batch-size` fields SHALL only be meaningful when `parallel: true` is set.
 
 #### Scenario: Manager file structure
 - **WHEN** a manager.md file is read
-- **THEN** it SHALL contain a `## Shift Configuration` section with `name` and `created` fields (and optionally `parallel`, `current-batch-size`, and `max-batch-size`), and a `## Task Order` section with a numbered list of task names
+- **THEN** it SHALL contain a `## Shift Configuration` section with `name` and `created` fields (and optionally `parallel`, `current-batch-size`, `max-batch-size`, and `disable-self-improvement`), and a `## Task Order` section with a numbered list of task names
 
 #### Scenario: Task order references valid task files
 - **WHEN** the Task Order section lists task name "create_page"
@@ -72,6 +72,14 @@ The system SHALL use `manager.md` as the shift execution manifest. The file SHAL
 #### Scenario: Manager updates current-batch-size during execution
 - **WHEN** the manager agent adjusts the batch size after completing a batch
 - **THEN** it SHALL update the `current-batch-size` field in the Shift Configuration section of `manager.md` to reflect the new batch size
+
+#### Scenario: Disable-self-improvement field present
+- **WHEN** a manager.md file contains `disable-self-improvement: true` in the Shift Configuration section
+- **THEN** the manager agent SHALL skip the Apply Step Improvements step and pass the flag to dev agents so they skip the Identify Recommendations step
+
+#### Scenario: Disable-self-improvement field absent
+- **WHEN** a manager.md file does not contain a `disable-self-improvement` field
+- **THEN** the manager agent SHALL run the self-improvement cycle as normal (default behavior)
 
 ### Requirement: Table file format
 The system SHALL use `table.csv` as the canonical data store for shift items. The CSV SHALL conform to RFC 4180 standard formatting to ensure compatibility with `qsv` and other CSV tools. The CSV SHALL contain metadata columns for item context and one status column per task defined in the shift.
