@@ -7,6 +7,8 @@
 |_| \_|_|\__, |_| |_|\__| |____/|_| |_|_|_|  \__|
        * |___/    .      +       .   *
 ```
+[![npm version](https://img.shields.io/npm/v/@johndaskovsky/nightshift.svg)](https://www.npmjs.com/package/@johndaskovsky/nightshift)
+[![downloads](https://img.shields.io/npm/dm/@johndaskovsky/nightshift.svg)](https://www.npmjs.com/package/@johndaskovsky/nightshift)
 
 Long-running unsupervised agent framework
 
