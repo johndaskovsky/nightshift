@@ -3,7 +3,6 @@ import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createInitCommand } from "./commands/init.js";
-import { createUpdateCommand } from "./commands/update.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -38,7 +37,6 @@ export function createProgram(): Command {
     .version(getVersion());
 
   program.addCommand(createInitCommand());
-  program.addCommand(createUpdateCommand());
 
   return program;
 }

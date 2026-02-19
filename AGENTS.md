@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-This is an AI agent orchestration framework called **Nightshift** — a batch processing system where a manager agent delegates work to dev agents. The framework is distributed as a TypeScript CLI installer (`nightshift init` / `nightshift update`) that scaffolds agent and command files into target projects, plus Markdown templates that define agent behaviors, commands, specifications, and workflows.
+This is an AI agent orchestration framework called **Nightshift** — a batch processing system where a manager agent delegates work to dev agents. The framework is distributed as a TypeScript CLI installer (`nightshift init`) that scaffolds agent and command files into target projects, plus Markdown templates that define agent behaviors, commands, specifications, and workflows.
 
 **Runtime:** [OpenCode](https://opencode.ai/) AI assistant with custom agents, commands, and skills.
 **Package manager:** pnpm.
@@ -64,7 +64,7 @@ openspec list changes
 ```
 night-shift/
 ├── src/                            # TypeScript CLI source
-│   ├── cli/                        # CLI commands (init, update)
+│   ├── cli/                        # CLI commands (init)
 │   ├── core/                       # Core utilities
 │   └── index.ts                    # Entry point
 ├── bin/                            # CLI entry script

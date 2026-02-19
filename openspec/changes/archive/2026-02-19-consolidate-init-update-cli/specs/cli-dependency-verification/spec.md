@@ -1,3 +1,5 @@
+## MODIFIED Requirements
+
 ### Requirement: CLI dependency detection
 The system SHALL check for the presence of `qsv` and `flock` CLI tools during `nightshift init` by executing `qsv --version` and `flock --version`. The check SHALL use `child_process.execSync` with a timeout to avoid hanging.
 
@@ -37,3 +39,13 @@ The system SHALL implement dependency checking logic in a shared utility module 
 #### Scenario: Utility returns structured result
 - **WHEN** the dependency check utility is called
 - **THEN** it SHALL return a result indicating for each dependency (`qsv`, `flock`) whether it is available (boolean) and, if available, its version string
+
+## REMOVED Requirements
+
+### Requirement: Dependency check is non-blocking (update scenario)
+**Reason**: The scenario "Update succeeds with missing dependencies" referenced `nightshift update`, which no longer exists. The init scenario above covers this behavior.
+**Migration**: No action required. The init command provides the same non-blocking dependency check behavior.
+
+### Requirement: Dependency summary section (update scenario)
+**Reason**: The scenario "Dependencies section in update output" referenced `nightshift update`, which no longer exists. The init scenario above covers this behavior.
+**Migration**: No action required. The init command displays the same dependency summary section.

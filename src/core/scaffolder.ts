@@ -5,7 +5,6 @@ import { getTemplatePath } from "./templates.js";
 
 export interface ScaffoldOptions {
   targetDir: string;
-  force?: boolean;
   onWrite?: (path: string, action: "created" | "updated" | "skipped") => void;
 }
 
