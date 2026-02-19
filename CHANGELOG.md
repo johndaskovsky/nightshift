@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.2] - 2026-02-19
+
+### Added
+
+- Add disable-self-improvement flag docs & tests
+
+Closes #3 - Introduce an optional disable-self-improvement flag to disable the manager/dev self-improvement cycle. Updates README with a Self-Improvement section and usage example; add an OpenSpec for the flag. Update agent specs (nightshift-agents, nightshift-shifts) to define flag behavior (manager skips Apply Step Improvements, dev returns Recommendations: None and skips Identify Recommendations) and ensure the flag is passed to dev. Update agent templates (nightshift-manager, nightshift-dev) to document handling of the flag. Add integration tests and benchmark entries for no-self-improvement and parallel-no-self-improvement scenarios.
+
+```
+================================================================================
+TEST RESULTS
+================================================================================
+Test                                             Result    Accuracy    Duration      Benchmark
+----------------------------------------------------------------------------------------------
+init                                             PASS      13/13       1.4s          SLOW (+14.4%)
+nightshift-start                                 PASS      3/3         2m 45s        OK
+nightshift-start-parallel                        PASS      3/3         1m 48s        FASTER (-14.0%)
+nightshift-start-no-self-improvement             PASS      3/3         2m 14s        NEW
+nightshift-start-parallel-no-self-improvement    PASS      3/3         1m 34s        NEW
+----------------------------------------------------------------------------------------------
+```
+
+Significant speed gains possible when disabling self improvement. Now using Claude Sonnet 4.6 as default model when testing.
+
+### Changed
+
+- Update changelog [skip ci]
+
 ## [1.0.1] - 2026-02-19
 
 ### Added
