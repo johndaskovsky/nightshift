@@ -1,6 +1,6 @@
 ## Context
 
-Nightshift's installer (`src/cli/commands/init.ts`) and scaffolder (`src/core/scaffolder.ts`) hardcode OpenCode-specific paths (`.opencode/agent/`, `.opencode/command/`) and template names (`templates/agents/`, `templates/commands/`). Templates use OpenCode subagent frontmatter (`mode: subagent`, `permission.bash`, `permission.task`, `playwright_*: true`) and OpenCode slash command frontmatter (`description` only).
+Nightshift's installer (`src/cli/commands/init.ts`) and scaffolder (`src/core/scaffolder.ts`) hardcode OpenCode-specific paths (`.opencode/agents/`, `.opencode/commands/`) and template names (`templates/agents/`, `templates/commands/`). Templates use OpenCode subagent frontmatter (`mode: subagent`, `permission.bash`, `permission.task`, `playwright_*: true`) and OpenCode slash command frontmatter (`description` only).
 
 Claude Code expresses the same primitives differently:
 

@@ -1,15 +1,49 @@
 ## ADDED Requirements
 
-### Requirement: Test runner entry point
-The system SHALL provide a test runner script at `test/run-tests.ts` that serves as the single entry point for executing all tests. The runner SHALL be invocable via `pnpm test`, which SHALL execute `tsx test/run-tests.ts`.
+### Requirement: Test runner entry points
+The system SHALL provide two test entry points: an init/scaffolder suite at `test/init-tests.ts` (no runtime CLI required) and an integration suite at `test/run-tests.ts` (drives shift execution against one or more runtimes). `pnpm test` SHALL run the init suite first and then the integration suite. Dedicated scripts SHALL exist to run each suite independently or to filter the integration suite by runtime: `pnpm test:init`, `pnpm test:integration`, `pnpm test:integration:opencode`, `pnpm test:integration:claude`, `pnpm test:integration:both`.
 
 #### Scenario: Running the full test suite
 - **WHEN** the user executes `pnpm test`
-- **THEN** the runner SHALL execute all defined tests sequentially and print a summary of results to stdout
+- **THEN** the runner SHALL execute the init suite to completion, then the integration suite, and print a summary of results to stdout
 
-#### Scenario: OpenCode not available
-- **WHEN** the runner starts and `opencode` is not found in the system PATH
-- **THEN** the runner SHALL print an error message stating that OpenCode is required and exit with a non-zero exit code without running any tests
+#### Scenario: Init suite without any runtime
+- **WHEN** the user executes `pnpm test:init` in an environment with neither `opencode` nor `claude` installed
+- **THEN** the init suite SHALL complete successfully (the init suite does NOT depend on any runtime CLI)
+
+### Requirement: Integration runner runtime selection
+The integration runner (`test/run-tests.ts`) SHALL accept a `--runtime=<opencode|claude|both>` CLI argument and a `NIGHTSHIFT_TEST_RUNTIMES` environment variable to select which runtimes are exercised. When neither is provided, the runner SHALL auto-detect by inspecting which runtime CLIs are on PATH.
+
+#### Scenario: Explicit runtime selection
+- **WHEN** the user executes `pnpm test:integration --runtime=claude`
+- **THEN** the runner SHALL run only the Claude variants of the per-runtime tests
+
+#### Scenario: Both runtimes selected
+- **WHEN** the user executes `pnpm test:integration --runtime=both`
+- **THEN** the runner SHALL run every per-runtime test once for OpenCode and once for Claude, in that order
+
+#### Scenario: Auto-detect with both CLIs available
+- **WHEN** the user executes `pnpm test:integration` with both `opencode` and `claude` on PATH
+- **THEN** the runner SHALL run every per-runtime test against both runtimes
+
+#### Scenario: Auto-detect with only one CLI available
+- **WHEN** the user executes `pnpm test:integration` with only `opencode` on PATH
+- **THEN** the runner SHALL run every per-runtime test against OpenCode only and SHALL NOT error
+
+#### Scenario: Requested runtime not available
+- **WHEN** the user requests a runtime via `--runtime=claude` but `claude` is not on PATH
+- **THEN** the runner SHALL print an error and exit with a non-zero status without running any tests
+
+#### Scenario: No runtimes available
+- **WHEN** the user invokes `pnpm test:integration` and neither `opencode` nor `claude` is on PATH
+- **THEN** the runner SHALL print an error and exit with a non-zero status
+
+### Requirement: Runtime-agnostic test definitions
+Each test in the integration runner SHALL define its fixtures and accuracy checks in a runtime-agnostic form. The runner SHALL execute the same test definition once per selected runtime, suffixing the displayed name and benchmark key with the runtime (e.g. `nightshift-start [claude]`, benchmark key `nightshift-start.claude`).
+
+#### Scenario: Per-runtime benchmark keys
+- **WHEN** the runner executes `nightshift-start` against both OpenCode and Claude
+- **THEN** the benchmarks file SHALL contain separate entries `nightshift-start.opencode` and `nightshift-start.claude` so each runtime's performance is tracked independently
 
 ### Requirement: Test workspace isolation
 The system SHALL create a temporary workspace directory under `test/workspace/` for each test suite run. All command executions and artifact generation SHALL occur within this workspace directory. The `test/workspace/` directory SHALL be listed in `test/.gitignore`.
@@ -34,30 +68,34 @@ The system SHALL remove all generated artifacts from the workspace directory aft
 - **THEN** the runner SHALL still delete the workspace directory and all its contents
 
 ### Requirement: CLI init test using local build
-The system SHALL include a test that validates the `nightshift init` command by running it against the locally-built CLI from the project's `dist/` directory rather than the published npm package.
+The integration suite SHALL include an init test that validates the `nightshift init` command by running it against the locally-built CLI from the project's `dist/` directory rather than the published npm package, using `--target=both` so subsequent per-runtime tests have access to whichever runtime is selected.
 
 #### Scenario: Build before init test
 - **WHEN** the init test begins execution
 - **THEN** the runner SHALL execute `pnpm build` to compile the current TypeScript source to `dist/` before invoking the CLI
 
-#### Scenario: Init scaffolds expected directories
-- **WHEN** the init test runs `nightshift init` in the workspace directory using the local build
-- **THEN** the following directories SHALL exist in the workspace: `.nightshift/archive/`, `.opencode/agent/`, `.opencode/command/`
+#### Scenario: Init scaffolds both runtime trees
+- **WHEN** the init test runs `nightshift init --target=both` in the workspace directory using the local build
+- **THEN** the following directories SHALL exist in the workspace: `.nightshift/archive/`, `.opencode/agents/`, `.opencode/commands/`, `.claude/agents/`, `.claude/skills/`
 
-#### Scenario: Init scaffolds expected agent files
-- **WHEN** the init test runs `nightshift init` in the workspace directory
-- **THEN** the following files SHALL exist: `.opencode/agent/nightshift-manager.md`, `.opencode/agent/nightshift-dev.md`
+#### Scenario: Init scaffolds expected OpenCode files
+- **WHEN** the init test runs `nightshift init --target=both` in the workspace directory
+- **THEN** the following files SHALL exist: `.opencode/agents/nightshift-manager.md`, `.opencode/agents/nightshift-dev.md`, and one `.opencode/commands/nightshift-*.md` per Nightshift command
 
-#### Scenario: Init scaffolds expected command files
-- **WHEN** the init test runs `nightshift init` in the workspace directory
-- **THEN** the following files SHALL exist: `.opencode/command/nightshift-create.md`, `.opencode/command/nightshift-add-task.md`, `.opencode/command/nightshift-update-table.md`, `.opencode/command/nightshift-start.md`, `.opencode/command/nightshift-test-task.md`, `.opencode/command/nightshift-archive.md`
+#### Scenario: Init scaffolds expected Claude files
+- **WHEN** the init test runs `nightshift init --target=both` in the workspace directory
+- **THEN** the following files SHALL exist: `.claude/agents/nightshift-manager.md`, `.claude/agents/nightshift-dev.md`, `.claude/skills/nightshift-start/SKILL.md`, `.claude/settings.json`, and `CLAUDE.md`
 
-### Requirement: Command execution via opencode run
-The system SHALL execute each nightshift command under test using `opencode run --command <command-name> [args] --format json`. The runner SHALL capture the JSON output and the process exit code for validation.
+### Requirement: Per-runtime command execution
+For each per-runtime test, the integration runner SHALL invoke the Nightshift slash command using the selected runtime's CLI and shall capture stdout and the exit code for validation.
 
-#### Scenario: Executing a command test
-- **WHEN** the runner executes a command test (e.g., `nightshift-create`)
-- **THEN** the runner SHALL invoke `opencode run --command nightshift-create <args> --format json` in the workspace directory and capture both stdout and the exit code
+#### Scenario: OpenCode invocation
+- **WHEN** the runner executes a per-runtime test against OpenCode
+- **THEN** the runner SHALL invoke `opencode run --command <skill-name> "<shift-name> -- <message>" --format json` in the workspace directory
+
+#### Scenario: Claude invocation
+- **WHEN** the runner executes a per-runtime test against Claude Code
+- **THEN** the runner SHALL invoke `claude -p "/<skill-name> <shift-name>" --output-format json --dangerously-skip-permissions` in the workspace directory with the environment variable `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` so that `context: fork` skills block the print-mode session until the manager subagent finishes
 
 #### Scenario: Command execution timeout
 - **WHEN** a command execution exceeds a configurable timeout (default: 5 minutes)

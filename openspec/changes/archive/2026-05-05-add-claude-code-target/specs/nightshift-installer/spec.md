@@ -103,7 +103,7 @@ When the effective target includes Claude, the system SHALL ensure a project-lev
 - **THEN** the system SHALL append a new Nightshift section (with markers) to the end of the file and print a warning informing the user that the section was appended rather than merged
 
 ### Requirement: Init detects Claude install via manager subagent
-When determining whether the current run is a first-run or re-run for the Claude target, the system SHALL check for the existence of `.claude/agents/nightshift-manager.md` (parallel to the existing `.opencode/agent/nightshift-manager.md` check for the OpenCode target).
+When determining whether the current run is a first-run or re-run for the Claude target, the system SHALL check for the existence of `.claude/agents/nightshift-manager.md` (parallel to the existing `.opencode/agents/nightshift-manager.md` check for the OpenCode target).
 
 #### Scenario: Fresh Claude install detected as first run
 - **WHEN** `nightshift init --target=claude` runs and `.claude/agents/nightshift-manager.md` does not exist
@@ -135,18 +135,18 @@ The system SHALL provide a `nightshift init` command that creates the required d
 
 #### Scenario: Init in a fresh project with default target
 - **WHEN** a user runs `nightshift init` in a directory that has no `.nightshift/`, `.opencode/`, or `.claude/` directories
-- **THEN** the system SHALL select `both` as the effective target and SHALL create `.nightshift/archive/`, `.opencode/agent/`, `.opencode/command/`, `.claude/agents/`, and `.claude/skills/` directories
+- **THEN** the system SHALL select `both` as the effective target and SHALL create `.nightshift/archive/`, `.opencode/agents/`, `.opencode/commands/`, `.claude/agents/`, and `.claude/skills/` directories
 
 #### Scenario: Init in a fresh project with OpenCode target
 - **WHEN** a user runs `nightshift init --target=opencode` in a directory that has no `.nightshift/` or `.opencode/` directories
-- **THEN** the system SHALL create `.nightshift/archive/`, `.opencode/agent/`, and `.opencode/command/` directories and SHALL NOT create `.claude/`
+- **THEN** the system SHALL create `.nightshift/archive/`, `.opencode/agents/`, and `.opencode/commands/` directories and SHALL NOT create `.claude/`
 
 #### Scenario: Init in a fresh project with Claude target
 - **WHEN** a user runs `nightshift init --target=claude` in a directory that has no `.nightshift/` or `.claude/` directories
 - **THEN** the system SHALL create `.nightshift/archive/`, `.claude/agents/`, and `.claude/skills/` directories and SHALL NOT create `.opencode/`
 
 #### Scenario: Init preserves existing directories
-- **WHEN** a user runs `nightshift init` in a directory that already has user-defined files in `.opencode/agent/` or `.claude/agents/`
+- **WHEN** a user runs `nightshift init` in a directory that already has user-defined files in `.opencode/agents/` or `.claude/agents/`
 - **THEN** the system SHALL NOT delete or modify existing non-Nightshift files in those directories
 
 ### Requirement: Init command summary output
@@ -165,14 +165,14 @@ The system SHALL display a summary of all actions performed after `nightshift in
 - **THEN** the system SHALL complete all other steps, print the summary with a warning about the failed step, and exit with a non-zero exit code
 
 ### Requirement: First-run detection
-The system SHALL detect whether Nightshift has been previously initialized in the target directory by checking for the existence of marker files appropriate to the effective target: `.opencode/agent/nightshift-manager.md` for OpenCode and `.claude/agents/nightshift-manager.md` for Claude. This detection SHALL be used solely for adjusting CLI output messaging and SHALL NOT affect the scaffolding behavior (files are always overwritten).
+The system SHALL detect whether Nightshift has been previously initialized in the target directory by checking for the existence of marker files appropriate to the effective target: `.opencode/agents/nightshift-manager.md` for OpenCode and `.claude/agents/nightshift-manager.md` for Claude. This detection SHALL be used solely for adjusting CLI output messaging and SHALL NOT affect the scaffolding behavior (files are always overwritten).
 
 #### Scenario: Fresh OpenCode directory detected as first run
-- **WHEN** `nightshift init` runs targeting OpenCode and `.opencode/agent/nightshift-manager.md` does not exist
+- **WHEN** `nightshift init` runs targeting OpenCode and `.opencode/agents/nightshift-manager.md` does not exist
 - **THEN** the system SHALL use first-run messaging for the OpenCode portion of the install
 
 #### Scenario: Previously initialized OpenCode directory detected as re-run
-- **WHEN** `nightshift init` runs targeting OpenCode and `.opencode/agent/nightshift-manager.md` already exists
+- **WHEN** `nightshift init` runs targeting OpenCode and `.opencode/agents/nightshift-manager.md` already exists
 - **THEN** the system SHALL use re-run messaging for the OpenCode portion of the install
 
 #### Scenario: Fresh Claude directory detected as first run

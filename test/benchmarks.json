@@ -4,19 +4,55 @@
     "updatedAt": "2026-02-15T12:51:59.320Z"
   },
   "nightshift-start": {
-    "durationMs": 161273,
-    "updatedAt": "2026-02-15T15:02:17.391Z"
+    "durationMs": 141517,
+    "updatedAt": "2026-05-04T18:46:59.210Z"
   },
   "nightshift-start-parallel": {
     "durationMs": 107780,
     "updatedAt": "2026-02-19T14:56:53.487Z"
   },
   "nightshift-start-no-self-improvement": {
-    "durationMs": 134426,
-    "updatedAt": "2026-02-19T14:59:07.913Z"
+    "durationMs": 126128,
+    "updatedAt": "2026-05-04T18:51:01.089Z"
   },
   "nightshift-start-parallel-no-self-improvement": {
-    "durationMs": 93928,
-    "updatedAt": "2026-02-19T15:00:41.841Z"
+    "durationMs": 89948,
+    "updatedAt": "2026-05-04T18:52:31.038Z"
+  },
+  "init-claude": {
+    "durationMs": 136,
+    "updatedAt": "2026-05-04T20:04:04.383Z"
+  },
+  "nightshift-start.opencode": {
+    "durationMs": 146088,
+    "updatedAt": "2026-05-05T12:16:51.861Z"
+  },
+  "nightshift-start-parallel.opencode": {
+    "durationMs": 99116,
+    "updatedAt": "2026-05-05T12:18:30.978Z"
+  },
+  "nightshift-start-no-self-improvement.opencode": {
+    "durationMs": 127712,
+    "updatedAt": "2026-05-05T13:14:58.805Z"
+  },
+  "nightshift-start-parallel-no-self-improvement.opencode": {
+    "durationMs": 86181,
+    "updatedAt": "2026-05-05T12:22:21.441Z"
+  },
+  "nightshift-start.claude": {
+    "durationMs": 99496,
+    "updatedAt": "2026-05-05T15:25:45.288Z"
+  },
+  "nightshift-start-no-self-improvement.claude": {
+    "durationMs": 75528,
+    "updatedAt": "2026-05-05T13:20:39.209Z"
+  },
+  "nightshift-start-parallel-no-self-improvement.claude": {
+    "durationMs": 55995,
+    "updatedAt": "2026-05-05T12:27:55.798Z"
+  },
+  "nightshift-start-parallel.claude": {
+    "durationMs": 62958,
+    "updatedAt": "2026-05-05T13:19:23.680Z"
   }
 }

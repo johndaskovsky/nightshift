@@ -7,3 +7,7 @@
 # Nightshift CLI build output
 /dist
 /node_modules
+
+# Claude Code Plugin artifacts (materialized from templates/claude/ at build time)
+/agents
+/skills

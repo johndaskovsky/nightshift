@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- **Claude Code support** alongside OpenCode. `nightshift init` now accepts `--target=<claude|opencode|both>` (auto-detected when omitted) and scaffolds the appropriate runtime files. Claude Code installs include:
+  - Subagents at `.claude/agents/nightshift-{manager,dev}.md` with native subagent frontmatter (`tools: Agent(nightshift-dev), …`, `mcpServers` example for Playwright).
+  - Six skills at `.claude/skills/nightshift-{create,add-task,update-table,start,test-task,archive}/SKILL.md`, each `disable-model-invocation: true` with `allowed-tools: Bash(qsv *) Bash(flock *)`.
+  - `/nightshift-start` uses `context: fork` + `agent: nightshift-manager` for declarative delegation; pre-flight summary is inlined via dynamic shell injection.
+  - Bundled scripts under `scripts/` referenced via `${CLAUDE_SKILL_DIR}` for portable resolution.
+  - Marker-merged `CLAUDE.md` (`<!-- nightshift:start -->` / `<!-- nightshift:end -->`) and idempotent `.claude/settings.json` merge.
+- **Claude Code Plugin** distribution: the npm package now publishes a `.claude-plugin/plugin.json` manifest plus root-level `agents/` and `skills/` directories materialized from `templates/claude/` at build time.
+- New `tsx test/init-tests.ts` suite (14 tests) covering target selection, auto-detection, settings.json merge, CLAUDE.md merge, prose parity, and benchmark tracking. `pnpm test` runs init tests first, then the integration suite.
+- Integration runner (`test/run-tests.ts`) now drives shifts under both OpenCode and Claude Code from the same fixtures. Selection is via `--runtime=<opencode|claude|both>` or `NIGHTSHIFT_TEST_RUNTIMES=...`; auto-detects when no flag is given. Each per-runtime test gets a separate benchmark entry (e.g. `nightshift-start.opencode` vs `nightshift-start.claude`). Added `pnpm test:integration:opencode`, `pnpm test:integration:claude`, and `pnpm test:integration:both` scripts.
+
+### Changed
+
+- Templates reorganized: `templates/agents/` → `templates/opencode/agents/`, `templates/commands/` → `templates/opencode/commands/`. New `templates/claude/` tree alongside.
+- `package.json` adds `claude-code` keyword and includes `.claude-plugin/`, `agents/`, and `skills/` in published files.
+
 ## [1.0.2] - 2026-02-19
 
 ### Added
