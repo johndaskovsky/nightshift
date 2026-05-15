@@ -1,8 +1,5 @@
-# nightshift-agents Specification
+## MODIFIED Requirements
 
-## Purpose
-Defines the manager and dev agent roles, their orchestration contract (item selection, retry budget, self-validation, self-improvement), permission scope, and the Claude Code subagent surface.
-## Requirements
 ### Requirement: Manager agent role
 The system SHALL define a `nightshift-manager` subagent that orchestrates shift execution. The manager SHALL read `manager.md`, `table.csv`, and the shift's `.env` file (if present), determine which items need processing, and dispatch work to dev subprocesses via the Bash tool (`claude -p "/nightshift-do-task ..."`). The manager SHALL pass environment variable key-value pairs to the dev subprocess as part of the invocation context. The manager SHALL be responsible for applying step improvements to task files based on dev subprocess recommendations, unless `disable-self-improvement: true` is set in the Shift Configuration section of `manager.md`. The manager SHALL use `qsv` CLI commands for all CSV operations on `table.csv`. The manager SHALL process all remaining items autonomously within a single session, returning to the supervisor only when all work is complete.
 
@@ -33,17 +30,6 @@ The system SHALL define a `nightshift-manager` subagent that orchestrates shift 
 #### Scenario: Manager yields to supervisor on completion
 - **WHEN** the manager has processed all items and no `todo` items remain across any task column
 - **THEN** the manager SHALL derive final counts from `table.csv` using `qsv search` and `qsv count` operations and output a completion summary to the supervisor
-
-### Requirement: Manager processes tasks in order
-The manager SHALL process tasks for each item in the order specified in the Task Order section of `manager.md`. A subsequent task for an item SHALL NOT begin until all preceding tasks for that item are `done`.
-
-#### Scenario: Sequential task processing per item
-- **WHEN** a shift has tasks "create_page" then "update_spreadsheet" and item at position 4 (0-based) has `create_page: done` and `update_spreadsheet: todo`
-- **THEN** the manager SHALL process "update_spreadsheet" for that item
-
-#### Scenario: Blocked task skipped
-- **WHEN** item at position 4 (0-based) has `create_page: failed` and `update_spreadsheet: todo`
-- **THEN** the manager SHALL NOT process "update_spreadsheet" for that item since the prerequisite task failed
 
 ### Requirement: Decentralized status writes
 The dev subprocess SHALL write its own status transitions to `table.csv` using `flock -x` prefixed `qsv edit -i` commands. The manager SHALL NOT write status transitions — it reads `table.csv` for status information and writes only to `manager.md` (configuration and task order) and task files (step improvements).
@@ -102,86 +88,6 @@ Each dev subprocess invocation SHALL operate with a fresh top-level Claude Code 
 - **WHEN** the manager dispatches an item with id 9 to a dev subprocess
 - **THEN** the dev SHALL receive only: the task file content (via the do-task skill's resolution), that item's metadata from table.csv (via the skill's row lookup), the shift's environment variables, and any task-specific configuration — not results from other items
 
-### Requirement: Dev agent self-validation
-The dev agent SHALL evaluate the task's Validation criteria after completing step execution and before reporting results to the manager. This self-validation is the sole determination of item success or failure.
-
-#### Scenario: Dev runs self-validation after steps complete
-- **WHEN** the dev agent successfully completes all task steps for an item
-- **THEN** it SHALL read the Validation section from the task file and evaluate each criterion against the execution outcomes
-
-#### Scenario: Self-validation passes
-- **WHEN** the dev agent's self-validation determines all criteria are met
-- **THEN** the dev agent SHALL report success to the manager, including self-validation results and any recommendations in its output
-
-#### Scenario: Self-validation fails triggers retry
-- **WHEN** the dev agent's self-validation determines one or more criteria are not met AND the retry limit has not been reached
-- **THEN** the dev agent SHALL refine its approach in-memory, re-execute the steps on the same item, and re-run self-validation
-
-#### Scenario: Self-validation failure after retry limit
-- **WHEN** the dev agent's self-validation fails AND the maximum number of attempts (3) has been reached
-- **THEN** the dev agent SHALL report failure to the manager with details from all attempts and any recommendations gathered
-
-### Requirement: Dev agent retry loop
-The dev agent SHALL retry execution when self-validation fails, up to a bounded maximum of 3 total attempts (1 initial + 2 retries) per item. The dev agent SHALL refine its approach in-memory across retries but SHALL NOT write refinements to the task file.
-
-#### Scenario: First retry after self-validation failure
-- **WHEN** the dev agent's self-validation fails on the first attempt
-- **THEN** the dev agent SHALL refine its approach in-memory based on the failure, re-execute all steps from the beginning on the same item, and run self-validation again
-
-#### Scenario: Second retry after repeated failure
-- **WHEN** the dev agent's self-validation fails on the second attempt
-- **THEN** the dev agent SHALL refine its approach in-memory again, re-execute, and run self-validation one final time (attempt 3 of 3)
-
-#### Scenario: Retry limit exceeded
-- **WHEN** the dev agent has exhausted all 3 attempts and self-validation still fails
-- **THEN** the dev agent SHALL report failure to the manager with `overall_status: "FAILED"` and include details from all attempts and final recommendations
-
-#### Scenario: Step execution failure during retry
-- **WHEN** a step fails during a retry attempt (not a validation failure)
-- **THEN** the dev agent SHALL count this as a failed attempt, refine its approach in-memory, and retry if attempts remain
-
-### Requirement: Dev agent step self-improvement
-The dev agent SHALL retain in-memory self-improvement during retries within a single invocation but SHALL NOT directly edit the Steps section of the task file. Instead, the dev agent SHALL report step improvement recommendations to the manager in its result output, unless `disable-self-improvement` is active in which case the Identify Recommendations step is skipped entirely and `Recommendations: None` is returned.
-
-#### Scenario: Dev refines approach in-memory during retries
-- **WHEN** the dev agent identifies during execution that steps could be improved (e.g., a step was ambiguous, an error case was unhandled, an assumption was wrong)
-- **THEN** the dev agent SHALL refine its understanding of the steps in-memory for use in subsequent retry attempts within the same invocation
-
-#### Scenario: Dev preserves step intent in recommendations
-- **WHEN** the dev agent formulates recommendations AND `disable-self-improvement` is not active
-- **THEN** the recommendations SHALL preserve the original intent and goals of the task while suggesting improvements to execution reliability
-
-#### Scenario: Dev does not write to task file
-- **WHEN** the dev agent identifies step improvements
-- **THEN** it SHALL NOT edit the Steps section of the task file directly, and SHALL instead include the improvements in its Recommendations output section (or return `Recommendations: None` if `disable-self-improvement` is active)
-
-#### Scenario: Recommendations reported regardless of outcome
-- **WHEN** the dev agent completes execution (success or failure) AND `disable-self-improvement` is not active
-- **THEN** it SHALL include any identified step improvements in the Recommendations section of its output, even if execution failed
-
-#### Scenario: Recommendations always None when flag is set
-- **WHEN** the dev agent completes execution AND `disable-self-improvement` is active
-- **THEN** it SHALL return `Recommendations: None` regardless of execution outcome
-
-### Requirement: Dev agent extended output contract
-The dev agent's result format returned to the manager SHALL include only the fields the manager acts on: `overall_status`, `recommendations`, and `error` (if failed). Verbose fields (per-step outcomes, captured values, self-validation details, attempt count) SHALL NOT be included in the output returned to the manager. The dev agent SHALL still use these fields internally for retry decisions and self-validation.
-
-#### Scenario: Output includes overall status
-- **WHEN** the dev agent returns results to the manager
-- **THEN** the results SHALL include an `overall_status` field with value `SUCCESS`, `FAILED (step N)`, or `FAILED (validation)`
-
-#### Scenario: Output includes recommendations
-- **WHEN** the dev agent returns results to the manager
-- **THEN** the results SHALL include a `recommendations` field listing any suggested step improvements, or explicitly stating "None" if no improvements were identified
-
-#### Scenario: Output includes error on failure
-- **WHEN** the dev agent returns results with `overall_status` containing `FAILED`
-- **THEN** the results SHALL include an `error` field with the full failure description including details from all attempts
-
-#### Scenario: Output excludes verbose fields
-- **WHEN** the dev agent returns results to the manager
-- **THEN** the results SHALL NOT include `Steps`, `Captured Values`, `Self-Validation`, or `Attempts` sections
-
 ### Requirement: Manager agent qsv and flock bash permissions
 The manager subagent SHALL declare its `tools` such that `Bash(qsv *)`, `Bash(flock *)`, and `Bash(claude *)` are pre-approved. The `Bash(claude *)` allow is required so the manager can spawn dev subprocesses without permission prompts.
 
@@ -237,3 +143,12 @@ The system SHALL default the Claude `nightshift-manager` subagent to `model: son
 - **WHEN** the manager spawns a dev subprocess
 - **THEN** the model SHALL be either the user's default (when `--model` is not passed) or a model the manager explicitly selects (when `--model` is passed)
 
+## REMOVED Requirements
+
+### Requirement: Dev subagent cannot delegate
+**Reason:** The dev role is no longer a subagent in 3.x — it runs as a top-level `claude -p` subprocess. The "cannot delegate" guarantee provided by the subagent's `tools` allowlist no longer applies because there is no subagent file to set tools on. The new equivalent guarantee is enforced via the `nightshift-do-task` skill body's prose plus the `--permission-mode auto` classifier (or `bypassPermissions` fallback) — both of which are specified in the `dev-subprocess` capability.
+**Migration:** Users relying on the static "dev cannot spawn other subagents" guarantee gain a runtime classifier guardrail in auto mode. In `bypassPermissions` mode the trade-off is explicit and documented.
+
+### Requirement: Dev subagent documents Playwright as user-configured
+**Reason:** The dev role is no longer a subagent. The "commented-out Playwright MCP server example in the subagent frontmatter" use case no longer applies — dev subprocesses inherit the user's top-level MCP configuration directly, so Playwright (or any other MCP) is enabled wherever the user enabled it globally.
+**Migration:** Users who want Playwright available to dev work configure it at the Claude Code user level (per Claude Code's MCP setup docs) instead of in a subagent file. The README updates to describe this.

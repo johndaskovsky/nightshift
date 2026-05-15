@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.0] - 2026-05-15
+
+### BREAKING
+
+- **Dev moves from subagent to top-level `claude -p` subprocess.** The `nightshift-dev` Claude Code subagent is removed. Dev work now runs as a fresh `claude -p` subprocess of a new `/nightshift-do-task` skill, spawned by the manager via the bundled `dispatch-batch.sh` helper. The dev subprocess inherits every MCP the user has configured at the user level (Slack, Drive, Playwright, internal MCPs, etc.) — no per-task or per-shift MCP setup required.
+- **Manager `tools` allowlist swap.** The manager subagent no longer carries `Agent(nightshift-dev)` in its `tools` list. Instead it gains `Bash(claude *)` (added to `.claude/settings.json`'s `permissions.allow`) so it can spawn dev subprocesses. The manager cannot delegate to any subagent.
+- **`nightshift init` removes legacy `nightshift-dev.md` on upgrade.** Unmodified 2.x files are deleted silently; user-customized files are renamed to `<file>.bak.<timestamp>` with a warning.
+- **Permission posture.** Dev subprocesses run with `--permission-mode auto` when available; the manager probes once per shift and falls back to `--permission-mode bypassPermissions` when auto mode's eligibility constraints aren't met. Auto mode requires Claude Code v2.1.83+, a Max/Team/Enterprise/API plan, an eligible Sonnet/Opus model, and the Anthropic API provider.
+
+### Added
+
+- `/nightshift-do-task <shift> <task> <item-id> [--read-only]` — new Claude Code skill executed by every dev subprocess. Resolves the shift artifacts, performs template substitution, executes steps, self-validates, retries up to 3 attempts, and emits a structured JSON `result` event.
+- `dispatch-batch.sh` — bundled helper (installed at `.claude/skills/nightshift-start/scripts/dispatch-batch.sh`) that takes a JSON manifest of items, spawns N concurrent `claude -p` subprocesses, parses each result event, and emits a consolidated JSON document for the manager. Used for both serial (1-item) and parallel (N-item) dispatch.
+- Per-item stream-json logs at `.nightshift/<shift>/logs/<item-id>-<task>-<timestamp>.jsonl`. Users can `tail -f` any log mid-shift for real-time observability. Logs are gitignored by default.
+- Test runner escape hatch via `NIGHTSHIFT_TEST_NO_AUTO_MODE` env var — when set, the auto-mode probe is bypassed and dev subprocesses use `bypassPermissions` directly. Useful for CI/test environments where auto mode is unavailable.
+
+### Changed
+
+- `test/benchmarks.json` baselines reset. The architectural shift makes prior numbers incomparable.
+- `.nightshift/.gitignore` now includes `**/logs/` and `.batch-manifest.json`.
+- README, AGENTS, and the template `CLAUDE.md` rewritten to describe the new architecture, MCP inheritance, permission mode, and observability story.
+- Plugin manifest version syncs to 3.0.0 automatically via `build.js`.
+
+### Removed
+
+- `templates/claude/agents/nightshift-dev.md` deleted. The role's behavior now lives in the `/nightshift-do-task` skill body.
+
 ## [2.0.0] - 2026-05-15
 
 ### BREAKING

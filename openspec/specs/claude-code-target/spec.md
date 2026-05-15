@@ -2,40 +2,34 @@
 
 ## Purpose
 Defines the Claude Code installation surface for Nightshift: scaffolds Claude Code subagents, skills, project settings, and a plugin manifest so Nightshift is fully usable inside Claude Code without manual file edits, while preserving identical orchestration semantics across OpenCode and Claude Code runtimes.
-
 ## Requirements
-
 ### Requirement: Claude Code installation surface
-The system SHALL provide a Claude Code installation surface that scaffolds Nightshift agents, skills, and project settings into the standard Claude Code directory layout (`.claude/`) so that Nightshift is fully usable inside Claude Code without manual file edits.
+The system SHALL provide a Claude Code installation surface that scaffolds Nightshift agents, skills, and project settings into the standard Claude Code directory layout (`.claude/`) so that Nightshift is fully usable inside Claude Code without manual file edits. Claude Code is the only supported installation surface.
 
 #### Scenario: Init writes Claude Code directories
-- **WHEN** `nightshift init --target=claude` runs in a fresh project
-- **THEN** the system SHALL create `.claude/agents/`, `.claude/skills/`, and `.nightshift/archive/`, and SHALL NOT create any `.opencode/` directories
-
-#### Scenario: Both targets coexist
-- **WHEN** `nightshift init --target=both` runs in a fresh project
-- **THEN** the system SHALL create both `.claude/{agents,skills}/` and `.opencode/{agent,command}/` directory trees
+- **WHEN** `nightshift init` runs in a fresh project
+- **THEN** the system SHALL create `.claude/agents/`, `.claude/skills/`, and `.nightshift/archive/`
 
 ### Requirement: Claude subagent files
-The system SHALL write two Claude Code subagent files (`nightshift-manager.md` and `nightshift-dev.md`) into `.claude/agents/` when the install target includes Claude. Each file SHALL use Claude Code subagent frontmatter format (`name`, `description`, `tools`, `model`; optional `mcpServers`, `hooks`, `skills`, `disallowedTools`, `permissionMode`, `memory`, `isolation`, `color`).
+The system SHALL write ONE Claude Code subagent file (`nightshift-manager.md`) into `.claude/agents/` when `nightshift init` runs. The file SHALL use Claude Code subagent frontmatter format (`name`, `description`, `tools`, `model`; optional `mcpServers`, `hooks`, `skills`, `disallowedTools`, `permissionMode`, `memory`, `isolation`, `color`). The dev role SHALL NOT have a subagent file — dev work runs as a top-level `claude -p` subprocess.
 
-#### Scenario: Manager subagent restricts spawnable subagents
+#### Scenario: Manager subagent omits Agent tool
 - **WHEN** `.claude/agents/nightshift-manager.md` is written
-- **THEN** its `tools` frontmatter field SHALL include `Agent(nightshift-dev)` to allowlist only the dev subagent for delegation, plus `Read`, `Write`, `Edit`, `Bash`, `Glob`, and `Grep`
+- **THEN** its `tools` frontmatter field SHALL NOT include `Agent` (no subagent delegation); SHALL include `Read`, `Write`, `Edit`, `Bash`, `Glob`, and `Grep` to support orchestration and subprocess dispatch
 
-#### Scenario: Dev subagent cannot spawn other subagents
-- **WHEN** `.claude/agents/nightshift-dev.md` is written
-- **THEN** its `tools` frontmatter field SHALL NOT include the `Agent` tool, ensuring the dev subagent cannot delegate to other subagents
+#### Scenario: Manager subagent allows claude CLI invocations
+- **WHEN** `.claude/settings.json` is written by `nightshift init`
+- **THEN** `permissions.allow` SHALL include `Bash(claude *)` so the manager can spawn `claude -p` subprocesses without permission prompts
 
-#### Scenario: Dev subagent documents Playwright as user-configured
-- **WHEN** `.claude/agents/nightshift-dev.md` is written
-- **THEN** the file SHALL include a commented `mcpServers` example showing how to enable Playwright, and SHALL NOT inline a live Playwright MCP server definition
+#### Scenario: No nightshift-dev subagent file is written
+- **WHEN** `nightshift init` completes
+- **THEN** `.claude/agents/nightshift-dev.md` SHALL NOT be present in the install (and SHALL be cleaned up by init if found from a prior 2.x install — see installer spec)
 
 ### Requirement: Nightshift skills as Claude Code Skills
-The system SHALL write six skill directories under `.claude/skills/` corresponding to the six Nightshift commands: `nightshift-create`, `nightshift-add-task`, `nightshift-update-table`, `nightshift-start`, `nightshift-test-task`, `nightshift-archive`. Each skill directory SHALL contain a `SKILL.md` entrypoint and MAY contain a `scripts/` subdirectory of supporting executables.
+The system SHALL write seven skill directories under `.claude/skills/` corresponding to the six user-facing Nightshift commands plus the internal `nightshift-do-task` skill: `nightshift-create`, `nightshift-add-task`, `nightshift-update-table`, `nightshift-start`, `nightshift-test-task`, `nightshift-archive`, and `nightshift-do-task`. Each skill directory SHALL contain a `SKILL.md` entrypoint and MAY contain a `scripts/` subdirectory of supporting executables.
 
 #### Scenario: Each skill has a SKILL.md
-- **WHEN** Claude target installation completes
+- **WHEN** install completes
 - **THEN** every skill directory under `.claude/skills/nightshift-*/` SHALL contain a file named exactly `SKILL.md` with valid YAML frontmatter delimited by `---`
 
 #### Scenario: Skills disable model invocation
@@ -43,19 +37,23 @@ The system SHALL write six skill directories under `.claude/skills/` correspondi
 - **THEN** its frontmatter SHALL include `disable-model-invocation: true` to prevent Claude from auto-invoking side-effecting workflows
 
 #### Scenario: Skills pre-approve CSV operations
-- **WHEN** any Nightshift `SKILL.md` is written
-- **THEN** its frontmatter `allowed-tools` field SHALL include `Bash(qsv *)` and `Bash(flock *)` so CSV operations execute without per-call permission prompts while the skill is active
+- **WHEN** a Nightshift `SKILL.md` is written
+- **THEN** its frontmatter `allowed-tools` field SHALL include `Bash(qsv *)` and `Bash(flock *)` (for skills that perform CSV operations) so those operations execute without per-call permission prompts while the skill is active
 
 #### Scenario: Start skill uses forked manager subagent
 - **WHEN** `.claude/skills/nightshift-start/SKILL.md` is written
 - **THEN** its frontmatter SHALL include `context: fork` and `agent: nightshift-manager` so the skill body becomes the manager subagent's task prompt directly
 
+#### Scenario: Do-task skill is top-level
+- **WHEN** `.claude/skills/nightshift-do-task/SKILL.md` is written
+- **THEN** its frontmatter SHALL NOT include `context: fork` — the skill runs in the calling top-level session (which, for manager-spawned subprocesses, is the fresh `claude -p` session that inherits user MCPs)
+
 #### Scenario: Skills use shift name argument
 - **WHEN** any Nightshift `SKILL.md` body references the shift name
-- **THEN** it SHALL use `$ARGUMENTS` or `$0` substitution so the user can invoke `/nightshift-<verb> <shift-name>` and have the name resolve correctly
+- **THEN** it SHALL use `$ARGUMENTS` or `$0` substitution so the user can invoke `/nightshift-<verb> <shift-name>` (or, for `do-task`, `/nightshift-do-task <shift> <task> <id>`) and have arguments resolve correctly
 
 ### Requirement: Bundled scripts use portable paths
-The system SHALL reference bundled skill scripts via the `${CLAUDE_SKILL_DIR}` environment variable so that scripts resolve correctly regardless of whether the skill is installed at user, project, or plugin scope.
+The system SHALL reference bundled skill scripts via the `${CLAUDE_SKILL_DIR}` environment variable so that scripts resolve correctly regardless of whether the skill is installed at user, project, or plugin scope. This SHALL include `dispatch-batch.sh` (the parallel dispatch helper) installed under `.claude/skills/nightshift-start/scripts/`.
 
 #### Scenario: Script invocation uses CLAUDE_SKILL_DIR
 - **WHEN** a `SKILL.md` invokes a bundled script
@@ -64,6 +62,10 @@ The system SHALL reference bundled skill scripts via the `${CLAUDE_SKILL_DIR}` e
 #### Scenario: Scripts are executable
 - **WHEN** a script is bundled under `<skill>/scripts/`
 - **THEN** it SHALL be marked executable (mode `0755`) when scaffolded into a target project
+
+#### Scenario: Dispatch helper is portable
+- **WHEN** the manager invokes the parallel dispatch helper
+- **THEN** it SHALL use `${CLAUDE_SKILL_DIR}/scripts/dispatch-batch.sh` so the call resolves identically whether Nightshift was installed via the CLI, via the Claude Code Plugin, or at the user level
 
 ### Requirement: Dynamic context injection for live state
 The system MAY use Claude Code's `` !`<command>` `` dynamic context injection syntax in skill bodies to inline live shift state (item counts, status summaries) into the prompt before Claude reads it. When used, the injected commands SHALL use `flock -x` exclusive locks to coordinate with concurrent dev agents.
@@ -127,9 +129,3 @@ The system SHALL ensure the Claude Code `nightshift-manager` subagent system pro
 - **WHEN** the Claude `nightshift-manager.md` template is built
 - **THEN** the prose body SHALL be under 5,000 tokens (verified by a build-time or test-time character/token check) so that the manager's instructions survive auto-compaction during long shifts
 
-### Requirement: Manager and dev orchestration semantics preserved
-The system SHALL preserve the orchestration contract between manager and dev across runtimes: state machine (`todo` → `done` | `failed`), retry budget (3 total attempts per item), self-validation, parallel batch sizing, self-improvement loop, and `disable-self-improvement` flag SHALL behave identically whether the shift runs under OpenCode or Claude Code.
-
-#### Scenario: Same shift runs identically across runtimes
-- **WHEN** an identical shift directory (`manager.md`, `table.csv`, task files) is processed under OpenCode and under Claude Code
-- **THEN** the resulting `table.csv` status transitions, retry counts, and self-improvement edits SHALL be equivalent (modulo non-determinism in agent decisions)

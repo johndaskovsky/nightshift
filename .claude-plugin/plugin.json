@@ -1,6 +1,6 @@
 {
   "name": "nightshift",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "Long-running unsupervised batch agent framework for Claude Code",
   "author": "johndaskovsky",
   "homepage": "https://github.com/johndaskovsky/nightshift",

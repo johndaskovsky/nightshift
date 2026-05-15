@@ -4,13 +4,15 @@ import {
   mkdirSync,
   existsSync,
   readdirSync,
+  renameSync,
   statSync,
   chmodSync,
+  unlinkSync,
 } from "node:fs";
 import { join, relative } from "node:path";
 import { getTemplatePath } from "./templates.js";
 
-export type WriteAction = "created" | "updated" | "skipped";
+export type WriteAction = "created" | "updated" | "skipped" | "removed" | "renamed";
 
 export interface ScaffoldOptions {
   targetDir: string;
@@ -24,7 +26,17 @@ export interface ScaffoldResult {
 
 const NIGHTSHIFT_MARKER_START = "<!-- nightshift:start -->";
 const NIGHTSHIFT_MARKER_END = "<!-- nightshift:end -->";
-const REQUIRED_BASH_ALLOW: ReadonlyArray<string> = ["Bash(qsv *)", "Bash(flock *)"];
+const REQUIRED_BASH_ALLOW: ReadonlyArray<string> = [
+  "Bash(qsv *)",
+  "Bash(flock *)",
+  "Bash(claude *)",
+];
+
+/**
+ * Sentinel string present in every legacy 2.x `nightshift-dev.md` bundled
+ * template. Used to detect an unmodified stale file vs. a user-customized one.
+ */
+const LEGACY_DEV_SENTINEL = "You are the Nightshift Dev subagent.";
 
 /**
  * Create the required Claude Code directory structure.
@@ -59,16 +71,49 @@ function writeTemplateFile(
 }
 
 /**
- * Write the Claude Code subagent files.
+ * Write the Claude Code subagent file (manager only — dev runs as a subprocess
+ * in 3.x and has no subagent file).
  */
 export function writeAgentFiles(options: ScaffoldOptions): ScaffoldResult {
   const result: ScaffoldResult = { actions: [] };
-  const agentFiles = ["nightshift-manager.md", "nightshift-dev.md"];
+  const agentFiles = ["nightshift-manager.md"];
   const agentsDir = getTemplatePath("claude", "agents");
   const targetAgentDir = join(options.targetDir, ".claude", "agents");
   for (const file of agentFiles) {
     writeTemplateFile(join(agentsDir, file), join(targetAgentDir, file), options, result);
   }
+  return result;
+}
+
+/**
+ * Detect and clean up the legacy `.claude/agents/nightshift-dev.md` file from
+ * a Nightshift 2.x install. If the file contents look like the bundled 2.x
+ * template (matches our sentinel string), delete silently. Otherwise rename to
+ * `<file>.bak.<ISO-timestamp>` and emit a warning.
+ *
+ * No-op when the file does not exist.
+ */
+export function removeStaleAgentFiles(options: ScaffoldOptions): ScaffoldResult {
+  const result: ScaffoldResult = { actions: [] };
+  const staleDevPath = join(options.targetDir, ".claude", "agents", "nightshift-dev.md");
+  if (!existsSync(staleDevPath)) return result;
+
+  const content = readFileSync(staleDevPath, "utf-8");
+  if (content.includes(LEGACY_DEV_SENTINEL)) {
+    unlinkSync(staleDevPath);
+    result.actions.push({ path: staleDevPath, action: "removed" });
+    options.onWrite?.(staleDevPath, "removed");
+    return result;
+  }
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const backupPath = `${staleDevPath}.bak.${timestamp}`;
+  renameSync(staleDevPath, backupPath);
+  result.actions.push({ path: backupPath, action: "renamed" });
+  options.onWrite?.(backupPath, "renamed");
+  options.onWarn?.(
+    `Legacy customized .claude/agents/nightshift-dev.md detected; backed up to ${relative(options.targetDir, backupPath)}. Dev work in Nightshift 3.x runs as a top-level claude -p subprocess of the /nightshift-do-task skill — review the backup if you had custom prose worth migrating.`,
+  );
   return result;
 }
 
@@ -215,7 +260,7 @@ export function writeClaudeMdFile(options: ScaffoldOptions): ScaffoldResult {
  */
 export function writeGitignoreFile(options: ScaffoldOptions): ScaffoldResult {
   const result: ScaffoldResult = { actions: [] };
-  const content = "table.csv.bak\n";
+  const content = "table.csv.bak\n**/logs/\n.batch-manifest.json\n";
   const targetPath = join(options.targetDir, ".nightshift", ".gitignore");
   mkdirSync(join(options.targetDir, ".nightshift"), { recursive: true });
   const action: WriteAction = existsSync(targetPath) ? "updated" : "created";

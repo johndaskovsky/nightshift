@@ -1,6 +1,7 @@
 export { createProgram, run } from "./cli/index.js";
 export {
   scaffoldDirectories,
+  removeStaleAgentFiles,
   writeAgentFiles,
   writeClaudeSkillFiles,
   writeClaudeSettingsFile,

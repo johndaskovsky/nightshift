@@ -113,15 +113,16 @@ const tests: TestCase[] = [
       assert(exitCode === 0, "nightshift init exited non-zero");
       for (const p of [
         ".claude/agents/nightshift-manager.md",
-        ".claude/agents/nightshift-dev.md",
         ".claude/skills/nightshift-create/SKILL.md",
         ".claude/skills/nightshift-add-task/SKILL.md",
         ".claude/skills/nightshift-update-table/SKILL.md",
         ".claude/skills/nightshift-start/SKILL.md",
         ".claude/skills/nightshift-test-task/SKILL.md",
         ".claude/skills/nightshift-archive/SKILL.md",
+        ".claude/skills/nightshift-do-task/SKILL.md",
         ".claude/skills/nightshift-create/scripts/init-shift.sh",
         ".claude/skills/nightshift-start/scripts/preflight.sh",
+        ".claude/skills/nightshift-start/scripts/dispatch-batch.sh",
         ".claude/skills/nightshift-archive/scripts/archive.sh",
         ".claude/settings.json",
         "CLAUDE.md",
@@ -129,9 +130,66 @@ const tests: TestCase[] = [
       ]) {
         assertExists(join(dir, p), p);
       }
-      const startScript = join(dir, ".claude/skills/nightshift-start/scripts/preflight.sh");
-      const mode = statSync(startScript).mode;
-      assert((mode & 0o111) !== 0, "preflight.sh should be executable");
+      // No dev subagent in 3.x
+      assert(
+        !existsSync(join(dir, ".claude/agents/nightshift-dev.md")),
+        "nightshift-dev.md should NOT exist in 3.x",
+      );
+      // Bundled scripts are executable
+      for (const script of [
+        ".claude/skills/nightshift-start/scripts/preflight.sh",
+        ".claude/skills/nightshift-start/scripts/dispatch-batch.sh",
+      ]) {
+        const mode = statSync(join(dir, script)).mode;
+        assert((mode & 0o111) !== 0, `${script} should be executable`);
+      }
+    },
+  },
+  {
+    name: "init removes unmodified legacy nightshift-dev.md silently",
+    run: () => {
+      const dir = newFixture("legacy-dev-unmodified");
+      // Pre-seed a stale dev subagent file with the 2.x sentinel
+      mkdirSync(join(dir, ".claude/agents"), { recursive: true });
+      writeFileSync(
+        join(dir, ".claude/agents/nightshift-dev.md"),
+        "---\nname: nightshift-dev\n---\n\nYou are the Nightshift Dev subagent. Legacy content.\n",
+      );
+      const { exitCode, stdout } = runInit(dir);
+      assert(exitCode === 0, "init should succeed");
+      assert(
+        !existsSync(join(dir, ".claude/agents/nightshift-dev.md")),
+        "legacy nightshift-dev.md should be deleted",
+      );
+      assertContains(stdout, "(removed)", "init summary mentions removal");
+    },
+  },
+  {
+    name: "init renames user-modified legacy nightshift-dev.md with backup",
+    run: () => {
+      const dir = newFixture("legacy-dev-modified");
+      mkdirSync(join(dir, ".claude/agents"), { recursive: true });
+      const custom = "---\nname: nightshift-dev\n---\n\nMy custom dev prose with no sentinel.\n";
+      writeFileSync(join(dir, ".claude/agents/nightshift-dev.md"), custom);
+      const { exitCode, stdout } = runInit(dir);
+      assert(exitCode === 0, "init should succeed");
+      assert(
+        !existsSync(join(dir, ".claude/agents/nightshift-dev.md")),
+        "customized nightshift-dev.md should be moved aside",
+      );
+      const backups = readdirSync(join(dir, ".claude/agents")).filter((f) =>
+        f.startsWith("nightshift-dev.md.bak."),
+      );
+      assert(backups.length === 1, `expected 1 backup, got ${backups.length}`);
+      assert(
+        readFileSync(join(dir, ".claude/agents", backups[0]), "utf-8") === custom,
+        "backup should preserve the user's customized content",
+      );
+      assertContains(
+        stdout,
+        "Legacy customized",
+        "init warns about user-modified legacy file",
+      );
     },
   },
   {
@@ -156,7 +214,7 @@ const tests: TestCase[] = [
       const skillNames = readdirSync(skillsDir).filter((n) =>
         statSync(join(skillsDir, n)).isDirectory(),
       );
-      assert(skillNames.length === 6, `expected 6 skills, got ${skillNames.length}`);
+      assert(skillNames.length === 7, `expected 7 skills, got ${skillNames.length}`);
       for (const name of skillNames) {
         const path = join(skillsDir, name, "SKILL.md");
         const { front } = frontmatter(path);

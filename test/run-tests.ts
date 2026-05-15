@@ -41,7 +41,7 @@ const PROJECT_ROOT = resolve(__dirname, "..");
 const WORKSPACE_DIR = join(__dirname, "workspace");
 const BENCHMARKS_PATH = join(__dirname, "benchmarks.json");
 const LOG_PATH = join(__dirname, "test-log.jsonl");
-const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes — subprocess overhead + serial + self-improvement is the slowest path
 const BENCHMARK_TOLERANCE_PERCENT = 10;
 const TEST_SHIFT_NAME = "test-shift";
 
@@ -115,6 +115,10 @@ function setupWorkspace(): void {
 }
 
 function cleanupWorkspace(): void {
+  if (process.env["NIGHTSHIFT_KEEP_WORKSPACE"]) {
+    console.log(`Workspace preserved at ${WORKSPACE_DIR} (NIGHTSHIFT_KEEP_WORKSPACE set)`);
+    return;
+  }
   if (existsSync(WORKSPACE_DIR)) {
     rmSync(WORKSPACE_DIR, { recursive: true });
   }
@@ -520,6 +524,7 @@ const SHIFT_OUTPUT_CHECKS = (): Check[] => {
     { label: "alpha.txt exists", type: "file", path: `${shiftDir}/alpha.txt` },
     { label: "beta.txt exists", type: "file", path: `${shiftDir}/beta.txt` },
     { label: "gamma.txt exists", type: "file", path: `${shiftDir}/gamma.txt` },
+    { label: "per-item logs dir", type: "dir", path: `${shiftDir}/logs` },
   ];
 };
 
@@ -560,14 +565,19 @@ const tests: TestDefinition[] = [
         path: ".claude/agents/nightshift-manager.md",
       },
       {
-        label: "claude dev",
-        type: "file",
-        path: ".claude/agents/nightshift-dev.md",
-      },
-      {
         label: "claude start skill",
         type: "file",
         path: ".claude/skills/nightshift-start/SKILL.md",
+      },
+      {
+        label: "claude do-task skill",
+        type: "file",
+        path: ".claude/skills/nightshift-do-task/SKILL.md",
+      },
+      {
+        label: "dispatch-batch helper",
+        type: "file",
+        path: ".claude/skills/nightshift-start/scripts/dispatch-batch.sh",
       },
       {
         label: ".claude/settings.json exists",
@@ -660,8 +670,21 @@ async function main(): Promise<void> {
 
   const results: TestResult[] = [];
 
+  // Optional filter via NIGHTSHIFT_TEST_FILTER env var. Matches test names
+  // that contain the filter string (substring match). Useful for iterating on
+  // a single test without paying the full-suite cost.
+  const filter = process.env["NIGHTSHIFT_TEST_FILTER"];
+  const selectedTests = filter ? tests.filter((t) => t.name.includes(filter)) : tests;
+  if (filter) {
+    console.log(`Filter: NIGHTSHIFT_TEST_FILTER="${filter}" → ${selectedTests.length} of ${tests.length} tests selected`);
+    if (selectedTests.length === 0) {
+      console.error(`No tests match filter "${filter}". Available: ${tests.map((t) => t.name).join(", ")}`);
+      process.exit(1);
+    }
+  }
+
   try {
-    for (const test of tests) {
+    for (const test of selectedTests) {
       console.log(`\nRunning: ${test.name}...`);
       const startTime = performance.now();
 

@@ -30,6 +30,8 @@ The integration suite SHALL include an init test that validates the `nightshift 
 - **WHEN** the init test runs `nightshift init` in the workspace directory
 - **THEN** the following files SHALL exist: `.claude/agents/nightshift-manager.md`, `.claude/agents/nightshift-dev.md`, `.claude/skills/nightshift-start/SKILL.md`, `.claude/settings.json`, and `CLAUDE.md`
 
+## ADDED Requirements
+
 ### Requirement: Command execution under Claude Code
 For each integration test, the integration runner SHALL invoke the Nightshift skill using the Claude Code CLI and SHALL capture stdout and the exit code for validation.
 

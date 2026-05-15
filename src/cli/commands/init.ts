@@ -6,6 +6,7 @@ import chalk from "chalk";
 import ora from "ora";
 import {
   scaffoldDirectories,
+  removeStaleAgentFiles,
   writeAgentFiles,
   writeClaudeSkillFiles,
   writeClaudeSettingsFile,
@@ -47,7 +48,20 @@ export function createInitCommand(): Command {
         process.exit(1);
       }
 
-      // Step 2: Write agent files
+      // Step 2a: Clean up stale legacy 2.x dev subagent if present
+      try {
+        removeStaleAgentFiles({
+          targetDir,
+          onWrite: (path, action) => actions.push({ path, action }),
+          onWarn: (msg) => warnings.push(msg),
+        });
+      } catch (err) {
+        warnings.push(
+          `Legacy cleanup: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+
+      // Step 2b: Write agent files
       const agentSpinner = ora(
         isFirstRun ? "Writing agent files..." : "Updating agent files...",
       ).start();
@@ -179,7 +193,11 @@ export function createInitCommand(): Command {
               ? chalk.green("+")
               : action === "updated"
                 ? chalk.yellow("~")
-                : chalk.dim("-");
+                : action === "removed"
+                  ? chalk.red("-")
+                  : action === "renamed"
+                    ? chalk.magenta("→")
+                    : chalk.dim("·");
           console.log(`  ${icon} ${relativePath} (${action})`);
         }
       }

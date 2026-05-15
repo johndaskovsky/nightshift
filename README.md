@@ -12,16 +12,16 @@
 
 Long-running unsupervised agent framework
 
-A batch processing framework for AI agents. Define a table of items, write task instructions, and let a two-agent system (manager, dev) work through them autonomously with built-in retries, self-improvement, and self-validation.
+A batch processing framework for AI agents. Define a table of items, write task instructions, and let a manager-plus-dev system work through them autonomously with built-in retries, self-improvement, and self-validation.
 
-Nightshift runs inside [Claude Code](https://code.claude.com/) as a set of custom subagents and Skills. It is distributed as a TypeScript CLI installer (`nightshift init`) that scaffolds agent and skill files into target projects, and as a Claude Code Plugin for native plugin discovery.
+Nightshift runs inside [Claude Code](https://code.claude.com/) as a `nightshift-manager` subagent that dispatches dev work as fresh top-level `claude -p` subprocesses. **Dev subprocesses inherit your full user-level MCP configuration** — any MCP you've installed in Claude Code (Slack, Drive, Playwright, internal company MCPs) is automatically available to every Nightshift task. It's distributed as a TypeScript CLI installer (`nightshift init`) and as a Claude Code Plugin for native plugin discovery.
 
 ## How It Works
 
-A **shift** is a batch job. It contains a CSV table of items to process and one or more task definitions that describe what to do with each item. Two agents collaborate to execute the work:
+A **shift** is a batch job. It contains a CSV table of items to process and one or more task definitions that describe what to do with each item. Two roles collaborate to execute the work:
 
-- **Manager** -- reads shift state, picks the next item, delegates to dev, applies step improvements from successful dev agents (unless `disable-self-improvement: true` is set), and reports progress. Writes `manager.md` and task files; reads `table.csv` for status information.
-- **Dev** -- executes task steps on a single item, self-validates, retries up to 3 times, reports step improvement recommendations (unless self-improvement is disabled), and writes its own status to `table.csv` (`done` on success, `failed` on failure).
+- **Manager** (a Claude Code subagent) -- reads shift state, picks the next item, dispatches dev work as a `claude -p` subprocess via the bundled `dispatch-batch.sh` helper, applies step improvements from successful dev runs (unless `disable-self-improvement: true` is set), and reports progress. Writes `manager.md` and task files; reads `table.csv` for status information.
+- **Dev** (a fresh top-level Claude session per item) -- executes task steps on a single item, self-validates, retries up to 3 times, reports step improvement recommendations (unless self-improvement is disabled), and writes its own status to `table.csv` (`done` on success, `failed` on failure). Because each dev runs as a top-level `claude -p` subprocess, it sees every user-configured MCP without any Nightshift-specific setup.
 
 Each item-task moves through a state machine:
 
@@ -33,9 +33,10 @@ todo --> done
 
 ## Prerequisites
 
-- [Claude Code](https://code.claude.com/)
+- [Claude Code](https://code.claude.com/) v2.1.83 or later (for `--permission-mode auto`; see the [Permission mode](#permission-mode) section for the fallback path on older versions or non-eligible plans).
 - [qsv](https://github.com/dathere/qsv) CSV toolkit (required) -- install via `brew install qsv` or download from [GitHub releases](https://github.com/dathere/qsv/releases) for non-Homebrew platforms
 - [flock](https://github.com/discoteq/flock) file locking utility (required) -- install via `brew install flock` or use the version bundled with `util-linux` on Linux
+- [jq](https://stedolan.github.io/jq/) JSON processor (required by `dispatch-batch.sh`) -- install via `brew install jq`
 
 ## Installation
 
@@ -367,19 +368,34 @@ All placeholders use fail-fast behavior. A missing column value, undefined envir
 | Manager | yes | yes | `qsv`, `flock` | dev only | no |
 | Dev | yes | yes | `mkdir`, `qsv`, `flock` | none | optional (see below) |
 
-### Enabling Playwright
+### MCP access (Playwright, Slack, Drive, custom MCPs)
 
-The dev subagent ships with a commented-out Playwright MCP server example. To enable browser automation for shifts that need it, edit `.claude/agents/nightshift-dev.md` and uncomment the `mcpServers` block:
+Nightshift dev work runs as a top-level `claude -p` subprocess, so it automatically inherits every MCP you have configured at the user level in Claude Code. **No Nightshift-specific MCP setup is required.** If you have a Playwright MCP, a Slack MCP, an internal company MCP, etc. installed globally, your Nightshift tasks can use them — just reference the relevant tools in your task file's `## Configuration` `tools:` line and the dev process will use them on each invocation.
 
-```yaml
-mcpServers:
-  - playwright:
-      type: stdio
-      command: npx
-      args: ["-y", "@playwright/mcp@latest"]
+To enable Playwright specifically, install the standard Playwright MCP at the user level per Claude Code's MCP setup docs. Subsequent shifts will pick it up automatically.
+
+### Permission mode
+
+The manager probes Claude Code's `--permission-mode auto` on each shift start and uses it when available. Auto mode reduces permission prompts while keeping classifier-driven safety guardrails (no privilege escalation, no force-push, no mass deletion, etc.). See <https://code.claude.com/docs/en/permission-modes> for the full contract.
+
+**Auto mode requires:**
+
+- Claude Code v2.1.83 or later
+- A Max, Team, Enterprise, or API plan (not Pro)
+- An eligible Sonnet 4.6, Opus 4.6, or Opus 4.7 model
+- The Anthropic API provider (not Bedrock, Vertex, or Foundry)
+
+If your environment doesn't qualify, the manager transparently falls back to `--permission-mode bypassPermissions` and prints a one-line notice in the shift's final summary. The fallback skips the classifier guardrails — tasks run with full tool access — so review your task definitions before kicking off shifts under fallback mode.
+
+### Real-time observability
+
+Each dev subprocess streams its work to `.nightshift/<shift>/logs/<item-id>-<task>-<timestamp>.jsonl`. While a shift is running, you can `tail -f` any log to watch a single dev process think in real time:
+
+```bash
+tail -f .nightshift/my-shift/logs/3-create_page-*.jsonl | jq .
 ```
 
-This scopes Playwright to the dev subagent only — the parent conversation does not see Playwright tools. If you prefer to share a Playwright MCP server across all subagents, configure it in the project's `.mcp.json` instead.
+Logs persist after the shift completes (handy for post-mortem). They are gitignored by default.
 
 ## Project Layout
 

@@ -1,49 +1,22 @@
-## ADDED Requirements
+# test-runner Specification
 
+## Purpose
+Defines the test runner: entry points, workspace isolation, command execution, accuracy tracking, benchmarks, log persistence, and execution ordering.
+## Requirements
 ### Requirement: Test runner entry points
-The system SHALL provide two test entry points: an init/scaffolder suite at `test/init-tests.ts` (no runtime CLI required) and an integration suite at `test/run-tests.ts` (drives shift execution against one or more runtimes). `pnpm test` SHALL run the init suite first and then the integration suite. Dedicated scripts SHALL exist to run each suite independently or to filter the integration suite by runtime: `pnpm test:init`, `pnpm test:integration`, `pnpm test:integration:opencode`, `pnpm test:integration:claude`, `pnpm test:integration:both`.
+The system SHALL provide two test entry points: an init/scaffolder suite at `test/init-tests.ts` (no runtime CLI required) and an integration suite at `test/run-tests.ts` (drives shift execution against Claude Code, including spawned `claude -p` dev subprocesses). `pnpm test` SHALL run the init suite first and then the integration suite. Dedicated scripts SHALL exist to run each suite independently: `pnpm test:init`, `pnpm test:integration`.
 
 #### Scenario: Running the full test suite
 - **WHEN** the user executes `pnpm test`
 - **THEN** the runner SHALL execute the init suite to completion, then the integration suite, and print a summary of results to stdout
 
 #### Scenario: Init suite without any runtime
-- **WHEN** the user executes `pnpm test:init` in an environment with neither `opencode` nor `claude` installed
+- **WHEN** the user executes `pnpm test:init` in an environment without `claude` installed
 - **THEN** the init suite SHALL complete successfully (the init suite does NOT depend on any runtime CLI)
 
-### Requirement: Integration runner runtime selection
-The integration runner (`test/run-tests.ts`) SHALL accept a `--runtime=<opencode|claude|both>` CLI argument and a `NIGHTSHIFT_TEST_RUNTIMES` environment variable to select which runtimes are exercised. When neither is provided, the runner SHALL auto-detect by inspecting which runtime CLIs are on PATH.
-
-#### Scenario: Explicit runtime selection
-- **WHEN** the user executes `pnpm test:integration --runtime=claude`
-- **THEN** the runner SHALL run only the Claude variants of the per-runtime tests
-
-#### Scenario: Both runtimes selected
-- **WHEN** the user executes `pnpm test:integration --runtime=both`
-- **THEN** the runner SHALL run every per-runtime test once for OpenCode and once for Claude, in that order
-
-#### Scenario: Auto-detect with both CLIs available
-- **WHEN** the user executes `pnpm test:integration` with both `opencode` and `claude` on PATH
-- **THEN** the runner SHALL run every per-runtime test against both runtimes
-
-#### Scenario: Auto-detect with only one CLI available
-- **WHEN** the user executes `pnpm test:integration` with only `opencode` on PATH
-- **THEN** the runner SHALL run every per-runtime test against OpenCode only and SHALL NOT error
-
-#### Scenario: Requested runtime not available
-- **WHEN** the user requests a runtime via `--runtime=claude` but `claude` is not on PATH
-- **THEN** the runner SHALL print an error and exit with a non-zero status without running any tests
-
-#### Scenario: No runtimes available
-- **WHEN** the user invokes `pnpm test:integration` and neither `opencode` nor `claude` is on PATH
-- **THEN** the runner SHALL print an error and exit with a non-zero status
-
-### Requirement: Runtime-agnostic test definitions
-Each test in the integration runner SHALL define its fixtures and accuracy checks in a runtime-agnostic form. The runner SHALL execute the same test definition once per selected runtime, suffixing the displayed name and benchmark key with the runtime (e.g. `nightshift-start [claude]`, benchmark key `nightshift-start.claude`).
-
-#### Scenario: Per-runtime benchmark keys
-- **WHEN** the runner executes `nightshift-start` against both OpenCode and Claude
-- **THEN** the benchmarks file SHALL contain separate entries `nightshift-start.opencode` and `nightshift-start.claude` so each runtime's performance is tracked independently
+#### Scenario: Integration suite without Claude
+- **WHEN** the user executes `pnpm test:integration` and `claude` is not on PATH
+- **THEN** the runner SHALL print an error stating Claude Code is not installed and exit with a non-zero status without running any tests
 
 ### Requirement: Test workspace isolation
 The system SHALL create a temporary workspace directory under `test/workspace/` for each test suite run. All command executions and artifact generation SHALL occur within this workspace directory. The `test/workspace/` directory SHALL be listed in `test/.gitignore`.
@@ -68,38 +41,23 @@ The system SHALL remove all generated artifacts from the workspace directory aft
 - **THEN** the runner SHALL still delete the workspace directory and all its contents
 
 ### Requirement: CLI init test using local build
-The integration suite SHALL include an init test that validates the `nightshift init` command by running it against the locally-built CLI from the project's `dist/` directory rather than the published npm package, using `--target=both` so subsequent per-runtime tests have access to whichever runtime is selected.
+The integration suite SHALL include an init test that validates the `nightshift init` command by running it against the locally-built CLI from the project's `dist/` directory rather than the published npm package.
 
 #### Scenario: Build before init test
 - **WHEN** the init test begins execution
 - **THEN** the runner SHALL execute `pnpm build` to compile the current TypeScript source to `dist/` before invoking the CLI
 
-#### Scenario: Init scaffolds both runtime trees
-- **WHEN** the init test runs `nightshift init --target=both` in the workspace directory using the local build
-- **THEN** the following directories SHALL exist in the workspace: `.nightshift/archive/`, `.opencode/agents/`, `.opencode/commands/`, `.claude/agents/`, `.claude/skills/`
-
-#### Scenario: Init scaffolds expected OpenCode files
-- **WHEN** the init test runs `nightshift init --target=both` in the workspace directory
-- **THEN** the following files SHALL exist: `.opencode/agents/nightshift-manager.md`, `.opencode/agents/nightshift-dev.md`, and one `.opencode/commands/nightshift-*.md` per Nightshift command
+#### Scenario: Init scaffolds Claude runtime tree
+- **WHEN** the init test runs `nightshift init` in the workspace directory using the local build
+- **THEN** the following directories SHALL exist in the workspace: `.nightshift/archive/`, `.claude/agents/`, `.claude/skills/`
 
 #### Scenario: Init scaffolds expected Claude files
-- **WHEN** the init test runs `nightshift init --target=both` in the workspace directory
-- **THEN** the following files SHALL exist: `.claude/agents/nightshift-manager.md`, `.claude/agents/nightshift-dev.md`, `.claude/skills/nightshift-start/SKILL.md`, `.claude/settings.json`, and `CLAUDE.md`
+- **WHEN** the init test runs `nightshift init` in the workspace directory
+- **THEN** the following files SHALL exist: `.claude/agents/nightshift-manager.md`, `.claude/skills/nightshift-start/SKILL.md`, `.claude/skills/nightshift-start/scripts/dispatch-batch.sh`, `.claude/skills/nightshift-do-task/SKILL.md`, `.claude/settings.json`, and `CLAUDE.md`
 
-### Requirement: Per-runtime command execution
-For each per-runtime test, the integration runner SHALL invoke the Nightshift slash command using the selected runtime's CLI and shall capture stdout and the exit code for validation.
-
-#### Scenario: OpenCode invocation
-- **WHEN** the runner executes a per-runtime test against OpenCode
-- **THEN** the runner SHALL invoke `opencode run --command <skill-name> "<shift-name> -- <message>" --format json` in the workspace directory
-
-#### Scenario: Claude invocation
-- **WHEN** the runner executes a per-runtime test against Claude Code
-- **THEN** the runner SHALL invoke `claude -p "/<skill-name> <shift-name>" --output-format json --dangerously-skip-permissions` in the workspace directory with the environment variable `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` so that `context: fork` skills block the print-mode session until the manager subagent finishes
-
-#### Scenario: Command execution timeout
-- **WHEN** a command execution exceeds a configurable timeout (default: 5 minutes)
-- **THEN** the runner SHALL kill the process, record the test as failed with reason "timeout", and proceed to the next test
+#### Scenario: Init does NOT scaffold dev subagent
+- **WHEN** the init test runs `nightshift init` in the workspace directory
+- **THEN** `.claude/agents/nightshift-dev.md` SHALL NOT exist (whether or not a stale copy was pre-seeded — see installer spec for cleanup behavior)
 
 ### Requirement: Nightshift-start command test
 The system SHALL include a test that validates the `nightshift-start` command initiates shift execution by delegating to the manager agent.
@@ -176,3 +134,37 @@ The system SHALL append a result record to `test/test-log.jsonl` after each test
 #### Scenario: First run creates log file
 - **WHEN** the runner executes for the first time and `test/test-log.jsonl` does not exist
 - **THEN** the runner SHALL create the file and append the first result record
+
+### Requirement: Command execution under Claude Code
+For each integration test, the integration runner SHALL invoke the Nightshift skill using the Claude Code CLI and SHALL capture stdout and the exit code for validation.
+
+#### Scenario: Claude invocation
+- **WHEN** the runner executes an integration test
+- **THEN** the runner SHALL invoke `claude -p "/<skill-name> <shift-name>" --output-format json --dangerously-skip-permissions` in the workspace directory with the environment variable `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` so that `context: fork` skills block the print-mode session until the manager subagent finishes
+
+#### Scenario: Command execution timeout
+- **WHEN** a command execution exceeds a configurable timeout (default: 5 minutes)
+- **THEN** the runner SHALL kill the process, record the test as failed with reason "timeout", and proceed to the next test
+
+### Requirement: Per-item subprocess log assertions
+The integration runner SHALL assert that each dev subprocess produces a stream-json log file at `.nightshift/<shift>/logs/<item-id>-<task>-<timestamp>.jsonl` after a shift test completes.
+
+#### Scenario: Per-item logs exist after shift test
+- **WHEN** the integration runner executes a shift test with 3 items in the table
+- **THEN** the workspace SHALL contain at least 3 `.jsonl` log files under `.nightshift/<shift>/logs/` (one per item; retries produce additional files)
+
+#### Scenario: Log files contain a result event
+- **WHEN** a `.jsonl` log file exists for a completed dev subprocess
+- **THEN** the file SHALL contain at least one JSON object with `"type": "result"`
+
+### Requirement: Auto-mode escape hatch for test environments
+The integration runner SHALL accept a `NIGHTSHIFT_TEST_NO_AUTO_MODE` environment variable (or equivalent CLI flag) that forces dev subprocesses to use `--permission-mode bypassPermissions` instead of `--permission-mode auto`. When set, the runner SHALL pass this preference through to the manager's invocation so subprocesses bypass the auto-mode probe.
+
+#### Scenario: Escape hatch on environments without auto mode
+- **WHEN** the integration runner is executed with `NIGHTSHIFT_TEST_NO_AUTO_MODE=1`
+- **THEN** every dev subprocess invocation SHALL use `--permission-mode bypassPermissions`, no auto-mode probe SHALL be performed, and the runner SHALL print a one-line notice in its output
+
+#### Scenario: Default behavior probes for auto mode
+- **WHEN** the integration runner is executed without the escape hatch
+- **THEN** the manager (running under the test) SHALL perform its standard auto-mode probe and use `auto` if available, falling back to `bypassPermissions` if not
+
