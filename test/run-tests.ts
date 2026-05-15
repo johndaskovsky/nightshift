@@ -1,10 +1,9 @@
 #!/usr/bin/env tsx
 
 /**
- * Nightshift test runner
+ * Nightshift integration test runner
  *
- * Executes integration tests for the Nightshift CLI and OpenCode commands.
- * Tests run sequentially in dependency order, tracking accuracy and performance.
+ * Executes integration tests against Claude Code.
  *
  * Test execution order:
  *   1. init
@@ -13,7 +12,10 @@
  *   4. nightshift-start-no-self-improvement
  *   5. nightshift-start-parallel-no-self-improvement
  *
- * Usage: pnpm test
+ * Requires the `claude` CLI on PATH; exits with an error if missing.
+ *
+ * Usage:
+ *   pnpm test:integration
  */
 
 import { execSync, spawn, type ChildProcess } from "node:child_process";
@@ -25,7 +27,6 @@ import {
   writeFileSync,
   appendFileSync,
   statSync,
-  readdirSync,
 } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -40,7 +41,7 @@ const PROJECT_ROOT = resolve(__dirname, "..");
 const WORKSPACE_DIR = join(__dirname, "workspace");
 const BENCHMARKS_PATH = join(__dirname, "benchmarks.json");
 const LOG_PATH = join(__dirname, "test-log.jsonl");
-const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes — subprocess overhead + serial + self-improvement is the slowest path
 const BENCHMARK_TOLERANCE_PERCENT = 10;
 const TEST_SHIFT_NAME = "test-shift";
 
@@ -52,11 +53,8 @@ interface Check {
   label: string;
   type: "file" | "dir" | "content" | "csv-column" | "csv-row-count";
   path: string;
-  /** For "content" checks: string that must appear in the file */
   contains?: string;
-  /** For "csv-column" checks: column name expected in header */
   column?: string;
-  /** For "csv-row-count" checks: minimum number of data rows */
   minRows?: number;
 }
 
@@ -84,15 +82,23 @@ interface TestDefinition {
 }
 
 // ---------------------------------------------------------------------------
-// Utilities: OpenCode check
+// Utilities: Pre-flight
 // ---------------------------------------------------------------------------
 
-function checkOpenCode(): void {
+function isCliAvailable(command: string): boolean {
   try {
-    execSync("opencode --version", { stdio: "pipe" });
+    execSync(`${command} --version`, { stdio: "pipe" });
+    return true;
   } catch {
-    console.error("Error: opencode is not installed or not in PATH.");
-    console.error("Tests require the OpenCode CLI. Install it from https://opencode.ai");
+    return false;
+  }
+}
+
+function requireClaude(): void {
+  if (!isCliAvailable("claude")) {
+    console.error(
+      "Error: claude is not installed or not in PATH. Install it from https://code.claude.com",
+    );
     process.exit(1);
   }
 }
@@ -109,6 +115,10 @@ function setupWorkspace(): void {
 }
 
 function cleanupWorkspace(): void {
+  if (process.env["NIGHTSHIFT_KEEP_WORKSPACE"]) {
+    console.log(`Workspace preserved at ${WORKSPACE_DIR} (NIGHTSHIFT_KEEP_WORKSPACE set)`);
+    return;
+  }
   if (existsSync(WORKSPACE_DIR)) {
     rmSync(WORKSPACE_DIR, { recursive: true });
   }
@@ -121,7 +131,7 @@ function cleanupWorkspace(): void {
 function runCommand(
   command: string,
   args: string[],
-  opts: { cwd?: string; timeoutMs?: number } = {},
+  opts: { cwd?: string; timeoutMs?: number; env?: NodeJS.ProcessEnv } = {},
 ): Promise<{ stdout: string; exitCode: number }> {
   const cwd = opts.cwd ?? WORKSPACE_DIR;
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -133,7 +143,7 @@ function runCommand(
     const child: ChildProcess = spawn(command, args, {
       cwd,
       stdio: ["ignore", "pipe", "pipe"],
-      env: { ...process.env },
+      env: opts.env ?? { ...process.env },
     });
 
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -150,7 +160,6 @@ function runCommand(
     });
 
     child.stderr?.on("data", (data: Buffer) => {
-      // Capture but don't display stderr during tests
       stdout += data.toString();
     });
 
@@ -170,16 +179,32 @@ function runCommand(
   });
 }
 
-function runOpenCodeCommand(
+/**
+ * Invoke a Nightshift skill in Claude Code with permissions pre-approved and
+ * background tasks forced synchronous (so `context: fork` skills block the
+ * print-mode session until the manager subagent completes).
+ */
+function runShiftCommand(
   commandName: string,
-  message?: string,
+  shiftName: string,
 ): Promise<{ stdout: string; exitCode: number }> {
-  const args = ["run", "--command", commandName];
-  if (message) {
-    args.push(message);
-  }
-  args.push("--format", "json");
-  return runCommand("opencode", args, { cwd: WORKSPACE_DIR });
+  return runCommand(
+    "claude",
+    [
+      "-p",
+      `/${commandName} ${shiftName}`,
+      "--output-format",
+      "json",
+      "--dangerously-skip-permissions",
+    ],
+    {
+      cwd: WORKSPACE_DIR,
+      env: {
+        ...process.env,
+        CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1",
+      },
+    },
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -224,7 +249,7 @@ function runChecks(checks: Check[]): { passed: number; total: number; failures: 
           const lines = readFileSync(fullPath, "utf-8")
             .split("\n")
             .filter((l) => l.trim() !== "");
-          const dataRows = lines.length - 1; // subtract header
+          const dataRows = lines.length - 1;
           ok = dataRows >= check.minRows;
         }
         break;
@@ -267,7 +292,6 @@ function compareBenchmark(
   const entry = benchmarks[testName];
 
   if (!entry) {
-    // New baseline
     benchmarks[testName] = {
       durationMs,
       updatedAt: new Date().toISOString(),
@@ -279,7 +303,6 @@ function compareBenchmark(
   const threshold = priorMs * (1 + BENCHMARK_TOLERANCE_PERCENT / 100);
 
   if (durationMs < priorMs) {
-    // Faster — update benchmark
     const improvement = ((priorMs - durationMs) / priorMs) * 100;
     benchmarks[testName] = {
       durationMs,
@@ -291,10 +314,8 @@ function compareBenchmark(
       priorMs,
     };
   } else if (durationMs <= threshold) {
-    // Within tolerance
     return { status: "OK", priorMs };
   } else {
-    // Regression
     const regression = ((durationMs - priorMs) / priorMs) * 100;
     return {
       status: "SLOW",
@@ -336,10 +357,8 @@ function printSummary(results: TestResult[]): void {
   console.log("TEST RESULTS");
   console.log("=".repeat(80));
 
-  // Column widths
   const nameWidth = Math.max(20, ...results.map((r) => r.name.length + 2));
 
-  // Header
   const header = [
     "Test".padEnd(nameWidth),
     "Result".padEnd(8),
@@ -350,7 +369,6 @@ function printSummary(results: TestResult[]): void {
   console.log(header);
   console.log("-".repeat(header.length));
 
-  // Rows
   for (const r of results) {
     const status = r.pass ? "PASS" : "FAIL";
     const benchLabel =
@@ -374,7 +392,6 @@ function printSummary(results: TestResult[]): void {
 
   console.log("-".repeat(header.length));
 
-  // Footer
   const passCount = results.filter((r) => r.pass).length;
   const failCount = results.filter((r) => !r.pass).length;
   const slowCount = results.filter((r) => r.benchmarkStatus === "SLOW").length;
@@ -390,17 +407,6 @@ function printSummary(results: TestResult[]): void {
 // ---------------------------------------------------------------------------
 
 const FIXTURE_TASK_NAME = "hello_world";
-
-const FIXTURE_MANAGER_EMPTY = `## Shift Configuration
-
-- name: ${TEST_SHIFT_NAME}
-- created: 2026-01-01
-<!-- - parallel: true -->
-
-## Task Order
-
-(no tasks yet — use \`/nightshift-add-task ${TEST_SHIFT_NAME}\` to add tasks)
-`;
 
 const FIXTURE_MANAGER_WITH_TASK = `## Shift Configuration
 
@@ -450,20 +456,10 @@ const FIXTURE_MANAGER_PARALLEL_NO_SELF_IMPROVEMENT = `## Shift Configuration
 1. ${FIXTURE_TASK_NAME}
 `;
 
-const FIXTURE_TABLE_EMPTY = `row\n`;
-
-const FIXTURE_TABLE_WITH_TASK = `row,${FIXTURE_TASK_NAME}\n`;
-
 const FIXTURE_TABLE_WITH_DATA = `row,name,${FIXTURE_TASK_NAME}
 1,alpha,todo
 2,beta,todo
 3,gamma,todo
-`;
-
-const FIXTURE_TABLE_ALL_DONE = `row,name,${FIXTURE_TASK_NAME}
-1,alpha,done
-2,beta,done
-3,gamma,done
 `;
 
 const FIXTURE_TASK_FILE = `## Configuration
@@ -480,14 +476,12 @@ const FIXTURE_TASK_FILE = `## Configuration
 - {name}.txt contains the text "{name}"
 `;
 
-/** Write a file, creating parent directories as needed. */
 function writeFixture(relativePath: string, content: string): void {
   const fullPath = join(WORKSPACE_DIR, relativePath);
   mkdirSync(dirname(fullPath), { recursive: true });
   writeFileSync(fullPath, content, "utf-8");
 }
 
-/** Set up a shift with manager.md, table.csv, and optionally a task file. */
 function setupShift(opts: {
   manager: string;
   table: string;
@@ -501,16 +495,18 @@ function setupShift(opts: {
   }
 }
 
-/** Ensure the workspace has been init'd (has .opencode/ and .nightshift/archive/). */
 function ensureInit(): void {
-  if (!existsSync(join(WORKSPACE_DIR, ".opencode", "command"))) {
+  const claudeReady = existsSync(join(WORKSPACE_DIR, ".claude", "skills"));
+  if (!claudeReady) {
     execSync("pnpm build", { cwd: PROJECT_ROOT, stdio: "pipe" });
     const binPath = join(PROJECT_ROOT, "bin", "nightshift.js");
-    execSync(`node ${binPath} init`, { cwd: WORKSPACE_DIR, stdio: "pipe" });
+    execSync(`node ${binPath} init`, {
+      cwd: WORKSPACE_DIR,
+      stdio: "pipe",
+    });
   }
 }
 
-/** Remove the test shift directory so the next test starts clean. */
 function cleanShift(): void {
   const shiftDir = join(WORKSPACE_DIR, ".nightshift", TEST_SHIFT_NAME);
   if (existsSync(shiftDir)) {
@@ -522,64 +518,34 @@ function cleanShift(): void {
 // Test definitions
 // ---------------------------------------------------------------------------
 
+const SHIFT_OUTPUT_CHECKS = (): Check[] => {
+  const shiftDir = `.nightshift/${TEST_SHIFT_NAME}`;
+  return [
+    { label: "alpha.txt exists", type: "file", path: `${shiftDir}/alpha.txt` },
+    { label: "beta.txt exists", type: "file", path: `${shiftDir}/beta.txt` },
+    { label: "gamma.txt exists", type: "file", path: `${shiftDir}/gamma.txt` },
+    { label: "per-item logs dir", type: "dir", path: `${shiftDir}/logs` },
+  ];
+};
+
 const tests: TestDefinition[] = [
   // -- 1. Init test --
   {
     name: "init",
     run: async () => {
-      // Remove .opencode so init runs fresh for this test
-      const opencodePath = join(WORKSPACE_DIR, ".opencode");
-      if (existsSync(opencodePath)) {
-        rmSync(opencodePath, { recursive: true });
+      for (const subdir of [".claude", ".nightshift"]) {
+        const p = join(WORKSPACE_DIR, subdir);
+        if (existsSync(p)) rmSync(p, { recursive: true });
       }
-      const nightshiftPath = join(WORKSPACE_DIR, ".nightshift");
-      if (existsSync(nightshiftPath)) {
-        rmSync(nightshiftPath, { recursive: true });
-      }
+      const claudeMd = join(WORKSPACE_DIR, "CLAUDE.md");
+      if (existsSync(claudeMd)) rmSync(claudeMd);
+
       execSync("pnpm build", { cwd: PROJECT_ROOT, stdio: "pipe" });
       const binPath = join(PROJECT_ROOT, "bin", "nightshift.js");
       await runCommand("node", [binPath, "init"], { cwd: WORKSPACE_DIR });
     },
     checks: () => [
       { label: ".nightshift/archive/ dir", type: "dir", path: ".nightshift/archive" },
-      { label: ".opencode/agent/ dir", type: "dir", path: ".opencode/agent" },
-      { label: ".opencode/command/ dir", type: "dir", path: ".opencode/command" },
-      {
-        label: "nightshift-manager.md",
-        type: "file",
-        path: ".opencode/agent/nightshift-manager.md",
-      },
-      { label: "nightshift-dev.md", type: "file", path: ".opencode/agent/nightshift-dev.md" },
-      {
-        label: "nightshift-create.md",
-        type: "file",
-        path: ".opencode/command/nightshift-create.md",
-      },
-      {
-        label: "nightshift-add-task.md",
-        type: "file",
-        path: ".opencode/command/nightshift-add-task.md",
-      },
-      {
-        label: "nightshift-update-table.md",
-        type: "file",
-        path: ".opencode/command/nightshift-update-table.md",
-      },
-      {
-        label: "nightshift-start.md",
-        type: "file",
-        path: ".opencode/command/nightshift-start.md",
-      },
-      {
-        label: "nightshift-test-task.md",
-        type: "file",
-        path: ".opencode/command/nightshift-test-task.md",
-      },
-      {
-        label: "nightshift-archive.md",
-        type: "file",
-        path: ".opencode/command/nightshift-archive.md",
-      },
       {
         label: ".nightshift/.gitignore exists",
         type: "file",
@@ -591,11 +557,38 @@ const tests: TestDefinition[] = [
         path: ".nightshift/.gitignore",
         contains: "table.csv.bak",
       },
+      { label: ".claude/agents/ dir", type: "dir", path: ".claude/agents" },
+      { label: ".claude/skills/ dir", type: "dir", path: ".claude/skills" },
+      {
+        label: "claude manager",
+        type: "file",
+        path: ".claude/agents/nightshift-manager.md",
+      },
+      {
+        label: "claude start skill",
+        type: "file",
+        path: ".claude/skills/nightshift-start/SKILL.md",
+      },
+      {
+        label: "claude do-task skill",
+        type: "file",
+        path: ".claude/skills/nightshift-do-task/SKILL.md",
+      },
+      {
+        label: "dispatch-batch helper",
+        type: "file",
+        path: ".claude/skills/nightshift-start/scripts/dispatch-batch.sh",
+      },
+      {
+        label: ".claude/settings.json exists",
+        type: "file",
+        path: ".claude/settings.json",
+      },
+      { label: "CLAUDE.md exists", type: "file", path: "CLAUDE.md" },
     ],
   },
 
-  // -- 2. nightshift-start test --
-  // Fixture: shift with task, 3 rows all at "todo"
+  // -- 2. nightshift-start (sequential) --
   {
     name: "nightshift-start",
     run: async () => {
@@ -606,23 +599,12 @@ const tests: TestDefinition[] = [
         table: FIXTURE_TABLE_WITH_DATA,
         taskFile: { name: FIXTURE_TASK_NAME, content: FIXTURE_TASK_FILE },
       });
-      await runOpenCodeCommand(
-        "nightshift-start",
-        `${TEST_SHIFT_NAME} -- Start the shift immediately. Do not ask for confirmation.`,
-      );
+      await runShiftCommand("nightshift-start", TEST_SHIFT_NAME);
     },
-    checks: () => {
-      const shiftDir = `.nightshift/${TEST_SHIFT_NAME}`;
-      return [
-        { label: "alpha.txt exists", type: "file" as const, path: `${shiftDir}/alpha.txt` },
-        { label: "beta.txt exists", type: "file" as const, path: `${shiftDir}/beta.txt` },
-        { label: "gamma.txt exists", type: "file" as const, path: `${shiftDir}/gamma.txt` },
-      ];
-    },
+    checks: SHIFT_OUTPUT_CHECKS,
   },
 
-  // -- 3. nightshift-start-parallel test --
-  // Fixture: shift with task, 3 rows all at "todo", parallel mode with batch size 3
+  // -- 3. nightshift-start-parallel --
   {
     name: "nightshift-start-parallel",
     run: async () => {
@@ -633,23 +615,12 @@ const tests: TestDefinition[] = [
         table: FIXTURE_TABLE_WITH_DATA,
         taskFile: { name: FIXTURE_TASK_NAME, content: FIXTURE_TASK_FILE },
       });
-      await runOpenCodeCommand(
-        "nightshift-start",
-        `${TEST_SHIFT_NAME} -- Start the shift immediately. Do not ask for confirmation.`,
-      );
+      await runShiftCommand("nightshift-start", TEST_SHIFT_NAME);
     },
-    checks: () => {
-      const shiftDir = `.nightshift/${TEST_SHIFT_NAME}`;
-      return [
-        { label: "alpha.txt exists", type: "file" as const, path: `${shiftDir}/alpha.txt` },
-        { label: "beta.txt exists", type: "file" as const, path: `${shiftDir}/beta.txt` },
-        { label: "gamma.txt exists", type: "file" as const, path: `${shiftDir}/gamma.txt` },
-      ];
-    },
+    checks: SHIFT_OUTPUT_CHECKS,
   },
 
-  // -- 4. nightshift-start-no-self-improvement test --
-  // Fixture: shift with task, 3 rows all at "todo", disable-self-improvement: true
+  // -- 4. nightshift-start-no-self-improvement --
   {
     name: "nightshift-start-no-self-improvement",
     run: async () => {
@@ -660,23 +631,12 @@ const tests: TestDefinition[] = [
         table: FIXTURE_TABLE_WITH_DATA,
         taskFile: { name: FIXTURE_TASK_NAME, content: FIXTURE_TASK_FILE },
       });
-      await runOpenCodeCommand(
-        "nightshift-start",
-        `${TEST_SHIFT_NAME} -- Start the shift immediately. Do not ask for confirmation.`,
-      );
+      await runShiftCommand("nightshift-start", TEST_SHIFT_NAME);
     },
-    checks: () => {
-      const shiftDir = `.nightshift/${TEST_SHIFT_NAME}`;
-      return [
-        { label: "alpha.txt exists", type: "file" as const, path: `${shiftDir}/alpha.txt` },
-        { label: "beta.txt exists", type: "file" as const, path: `${shiftDir}/beta.txt` },
-        { label: "gamma.txt exists", type: "file" as const, path: `${shiftDir}/gamma.txt` },
-      ];
-    },
+    checks: SHIFT_OUTPUT_CHECKS,
   },
 
-  // -- 5. nightshift-start-parallel-no-self-improvement test --
-  // Fixture: shift with task, 3 rows all at "todo", parallel mode with batch size 3, disable-self-improvement: true
+  // -- 5. nightshift-start-parallel-no-self-improvement --
   {
     name: "nightshift-start-parallel-no-self-improvement",
     run: async () => {
@@ -687,19 +647,9 @@ const tests: TestDefinition[] = [
         table: FIXTURE_TABLE_WITH_DATA,
         taskFile: { name: FIXTURE_TASK_NAME, content: FIXTURE_TASK_FILE },
       });
-      await runOpenCodeCommand(
-        "nightshift-start",
-        `${TEST_SHIFT_NAME} -- Start the shift immediately. Do not ask for confirmation.`,
-      );
+      await runShiftCommand("nightshift-start", TEST_SHIFT_NAME);
     },
-    checks: () => {
-      const shiftDir = `.nightshift/${TEST_SHIFT_NAME}`;
-      return [
-        { label: "alpha.txt exists", type: "file" as const, path: `${shiftDir}/alpha.txt` },
-        { label: "beta.txt exists", type: "file" as const, path: `${shiftDir}/beta.txt` },
-        { label: "gamma.txt exists", type: "file" as const, path: `${shiftDir}/gamma.txt` },
-      ];
-    },
+    checks: SHIFT_OUTPUT_CHECKS,
   },
 ];
 
@@ -708,24 +658,33 @@ const tests: TestDefinition[] = [
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
-  console.log("Nightshift Test Runner");
+  console.log("Nightshift Integration Test Runner");
   console.log("=".repeat(80));
 
-  // Pre-flight: check OpenCode
-  checkOpenCode();
-  console.log("OpenCode: available");
+  requireClaude();
 
-  // Setup workspace
   setupWorkspace();
   console.log(`Workspace: ${WORKSPACE_DIR}`);
 
-  // Load benchmarks
   const benchmarks = loadBenchmarks();
 
   const results: TestResult[] = [];
 
+  // Optional filter via NIGHTSHIFT_TEST_FILTER env var. Matches test names
+  // that contain the filter string (substring match). Useful for iterating on
+  // a single test without paying the full-suite cost.
+  const filter = process.env["NIGHTSHIFT_TEST_FILTER"];
+  const selectedTests = filter ? tests.filter((t) => t.name.includes(filter)) : tests;
+  if (filter) {
+    console.log(`Filter: NIGHTSHIFT_TEST_FILTER="${filter}" → ${selectedTests.length} of ${tests.length} tests selected`);
+    if (selectedTests.length === 0) {
+      console.error(`No tests match filter "${filter}". Available: ${tests.map((t) => t.name).join(", ")}`);
+      process.exit(1);
+    }
+  }
+
   try {
-    for (const test of tests) {
+    for (const test of selectedTests) {
       console.log(`\nRunning: ${test.name}...`);
       const startTime = performance.now();
 
@@ -743,7 +702,6 @@ async function main(): Promise<void> {
 
       const durationMs = Math.round(performance.now() - startTime);
 
-      // Run accuracy checks
       const checks = test.checks();
       const { passed, total, failures } = runChecks(checks);
       const accuracy = `${passed}/${total}`;
@@ -755,7 +713,6 @@ async function main(): Promise<void> {
         }
       }
 
-      // Benchmark comparison — only update benchmarks for passing tests
       const priorBenchmark = benchmarks[test.name]?.durationMs ?? null;
       let benchResult: { status: "NEW" | "FASTER" | "OK" | "SLOW"; delta?: string; priorMs: number | null };
 
@@ -774,7 +731,6 @@ async function main(): Promise<void> {
           );
         }
       } else {
-        // Failed tests: report prior benchmark for reference but do not update
         benchResult = { status: "OK", priorMs: priorBenchmark };
         if (priorBenchmark !== null) {
           console.log(`  Benchmark: skipped (test failed, prior ${formatDuration(priorBenchmark)})`);
@@ -793,7 +749,6 @@ async function main(): Promise<void> {
         error,
       });
 
-      // Append to test log
       appendTestLog({
         timestamp: new Date().toISOString(),
         test: test.name,
@@ -804,17 +759,12 @@ async function main(): Promise<void> {
       });
     }
   } finally {
-    // Save benchmarks
     saveBenchmarks(benchmarks);
-
-    // Cleanup workspace
     cleanupWorkspace();
   }
 
-  // Print summary
   printSummary(results);
 
-  // Exit code
   const allPassed = results.every((r) => r.pass);
   process.exit(allPassed ? 0 : 1);
 }

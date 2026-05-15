@@ -1,22 +1,22 @@
 {
   "init": {
-    "durationMs": 1239,
-    "updatedAt": "2026-02-15T12:51:59.320Z"
+    "durationMs": 155,
+    "updatedAt": "2026-05-15T17:55:22.576Z"
   },
   "nightshift-start": {
-    "durationMs": 161273,
-    "updatedAt": "2026-02-15T15:02:17.391Z"
+    "durationMs": 227853,
+    "updatedAt": "2026-05-15T16:08:02.396Z"
   },
   "nightshift-start-parallel": {
-    "durationMs": 107780,
-    "updatedAt": "2026-02-19T14:56:53.487Z"
+    "durationMs": 85505,
+    "updatedAt": "2026-05-15T16:09:27.905Z"
   },
   "nightshift-start-no-self-improvement": {
-    "durationMs": 134426,
-    "updatedAt": "2026-02-19T14:59:07.913Z"
+    "durationMs": 215547,
+    "updatedAt": "2026-05-15T16:13:03.455Z"
   },
   "nightshift-start-parallel-no-self-improvement": {
-    "durationMs": 93928,
-    "updatedAt": "2026-02-19T15:00:41.841Z"
+    "durationMs": 93146,
+    "updatedAt": "2026-05-15T16:14:36.603Z"
   }
 }

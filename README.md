@@ -12,16 +12,16 @@
 
 Long-running unsupervised agent framework
 
-A batch processing framework for AI agents. Define a table of items, write task instructions, and let a two-agent system (manager, dev) work through them autonomously with built-in retries, self-improvement, and self-validation.
+A batch processing framework for AI agents. Define a table of items, write task instructions, and let a manager-plus-dev system work through them autonomously with built-in retries, self-improvement, and self-validation.
 
-Nightshift runs inside [OpenCode](https://opencode.ai/) as a set of custom agents, commands, and skills. It is distributed as a TypeScript CLI installer (`nightshift init`) that scaffolds agent and command files into target projects.
+Nightshift runs inside [Claude Code](https://code.claude.com/) as a `nightshift-manager` subagent that dispatches dev work as fresh top-level `claude -p` subprocesses. **Dev subprocesses inherit your full user-level MCP configuration** — any MCP you've installed in Claude Code (Slack, Drive, Playwright, internal company MCPs) is automatically available to every Nightshift task. It's distributed as a TypeScript CLI installer (`nightshift init`) and as a Claude Code Plugin for native plugin discovery.
 
 ## How It Works
 
-A **shift** is a batch job. It contains a CSV table of items to process and one or more task definitions that describe what to do with each item. Two agents collaborate to execute the work:
+A **shift** is a batch job. It contains a CSV table of items to process and one or more task definitions that describe what to do with each item. Two roles collaborate to execute the work:
 
-- **Manager** -- reads shift state, picks the next item, delegates to dev, applies step improvements from successful dev agents (unless `disable-self-improvement: true` is set), and reports progress. Writes `manager.md` and task files; reads `table.csv` for status information.
-- **Dev** -- executes task steps on a single item, self-validates, retries up to 3 times, reports step improvement recommendations (unless self-improvement is disabled), and writes its own status to `table.csv` (`done` on success, `failed` on failure).
+- **Manager** (a Claude Code subagent) -- reads shift state, picks the next item, dispatches dev work as a `claude -p` subprocess via the bundled `dispatch-batch.sh` helper, applies step improvements from successful dev runs (unless `disable-self-improvement: true` is set), and reports progress. Writes `manager.md` and task files; reads `table.csv` for status information.
+- **Dev** (a fresh top-level Claude session per item) -- executes task steps on a single item, self-validates, retries up to 3 times, reports step improvement recommendations (unless self-improvement is disabled), and writes its own status to `table.csv` (`done` on success, `failed` on failure). Because each dev runs as a top-level `claude -p` subprocess, it sees every user-configured MCP without any Nightshift-specific setup.
 
 Each item-task moves through a state machine:
 
@@ -33,9 +33,10 @@ todo --> done
 
 ## Prerequisites
 
-- [OpenCode](https://opencode.ai/) AI assistant
+- [Claude Code](https://code.claude.com/) v2.1.83 or later (for `--permission-mode auto`; see the [Permission mode](#permission-mode) section for the fallback path on older versions or non-eligible plans).
 - [qsv](https://github.com/dathere/qsv) CSV toolkit (required) -- install via `brew install qsv` or download from [GitHub releases](https://github.com/dathere/qsv/releases) for non-Homebrew platforms
 - [flock](https://github.com/discoteq/flock) file locking utility (required) -- install via `brew install flock` or use the version bundled with `util-linux` on Linux
+- [jq](https://stedolan.github.io/jq/) JSON processor (required by `dispatch-batch.sh`) -- install via `brew install jq`
 
 ## Installation
 
@@ -52,13 +53,23 @@ cd your-project
 nightshift init
 ```
 
-This creates the `.nightshift/` and `.opencode/` directories and writes the agent and command files.
+The CLI scaffolds `.claude/agents/`, `.claude/skills/`, `.claude/settings.json` (merged), and a project `CLAUDE.md` (merged via `<!-- nightshift:start -->` / `<!-- nightshift:end -->` markers), alongside the `.nightshift/` shift data directory.
 
 To regenerate framework files after upgrading the CLI, run `nightshift init` again. It detects the existing installation and adjusts its output messaging accordingly. All framework-managed files are overwritten with the latest versions; shift data in `.nightshift/` is never touched.
 
+### Alternative: Claude Code Plugin
+
+The npm package also publishes a Claude Code Plugin manifest. If you prefer plugin-style distribution over the CLI installer, you can install Nightshift via Claude Code's plugin discovery (no `nightshift init` step needed). The plugin bundles the same subagent and skill files; project-scoped installs from `nightshift init` will override plugin-supplied files per [Claude Code's precedence rules](https://code.claude.com/docs/en/skills#where-skills-live).
+
+> ⚠️ Don't run both at once: if you install Nightshift as a plugin **and** also run `nightshift init` in the same project, you'll have two copies of the skills. The CLI prints a warning when it detects a likely Nightshift plugin reference in `~/.claude/settings.json`.
+
+### First-run note for Claude Code users
+
+Claude Code watches skill directories for changes during a session, but creating a top-level `.claude/skills/` directory that did not exist when the session started requires restarting Claude Code. If you ran `nightshift init` while Claude Code was already running, restart it so the new skills are discovered.
+
 ## Quick Start
 
-All commands run inside the OpenCode assistant.
+All commands run inside Claude Code.
 
 ### 1. Create a shift
 
@@ -355,23 +366,148 @@ All placeholders use fail-fast behavior. A missing column value, undefined envir
 | Agent | Write | Edit | Bash | Delegation | Playwright |
 |-------|-------|------|------|------------|------------|
 | Manager | yes | yes | `qsv`, `flock` | dev only | no |
-| Dev | yes | yes | `mkdir`, `qsv`, `flock` | none | yes |
+| Dev | yes | yes | `mkdir`, `qsv`, `flock` | none | optional (see below) |
+
+### MCP access (Playwright, Slack, Drive, custom MCPs)
+
+Nightshift dev work runs as a top-level `claude -p` subprocess, so it automatically inherits every MCP you have configured at the user level in Claude Code. **No Nightshift-specific MCP setup is required.** If you have a Playwright MCP, a Slack MCP, an internal company MCP, etc. installed globally, your Nightshift tasks can use them — just reference the relevant tools in your task file's `## Configuration` `tools:` line and the dev process will use them on each invocation.
+
+To enable Playwright specifically, install the standard Playwright MCP at the user level per Claude Code's MCP setup docs. Subsequent shifts will pick it up automatically.
+
+### Permission mode
+
+The manager probes Claude Code's `--permission-mode auto` on each shift start and uses it when available. Auto mode reduces permission prompts while keeping classifier-driven safety guardrails (no privilege escalation, no force-push, no mass deletion, etc.). See <https://code.claude.com/docs/en/permission-modes> for the full contract.
+
+**Auto mode requires:**
+
+- Claude Code v2.1.83 or later
+- A Max, Team, Enterprise, or API plan (not Pro)
+- An eligible Sonnet 4.6, Opus 4.6, or Opus 4.7 model
+- The Anthropic API provider (not Bedrock, Vertex, or Foundry)
+
+If your environment doesn't qualify, the manager transparently falls back to `--permission-mode bypassPermissions` and prints a one-line notice in the shift's final summary. The fallback skips the classifier guardrails — tasks run with full tool access — so review your task definitions before kicking off shifts under fallback mode.
+
+### Real-time observability
+
+Each dev subprocess streams its work to `.nightshift/<shift>/logs/<item-id>-<task>-<timestamp>.jsonl`. While a shift is running, you can `tail -f` any log to watch a single dev process think in real time:
+
+```bash
+tail -f .nightshift/my-shift/logs/3-create_page-*.jsonl | jq .
+```
+
+Logs persist after the shift completes (handy for post-mortem). They are gitignored by default.
+
+## Multi-repo shifts
+
+Nightshift can target a different repository per item. Three optional fields in the task `## Configuration` section control where and how each dev subprocess runs:
+
+- **`working_dir: <path-or-placeholder>`** — the directory each dev subprocess `cd`s into before running. Supports the same placeholder syntax as task steps (`{column}`, `{ENV:VAR}`, `{SHIFT:FOLDER|NAME|TABLE}`), so per-item paths come from a `table.csv` column.
+- **`worktree: true`** — when set, the subprocess runs inside a git worktree of `working_dir` on a unique branch (`worktree-ns-<shift>-<item>-<task>-<timestamp>`). Each item gets its own isolated checkout — parallel items targeting the same repo don't clobber each other.
+- **`model: <name>`** — pass a specific Claude Code model (`haiku`, `sonnet`, `opus`, or a full model ID) for this task. Useful for cost control: mechanical tasks can run on `haiku`.
+
+### Example: refactor across 3 repos in parallel
+
+Task definition (`.nightshift/dep-bump/upgrade.md`):
+
+```markdown
+## Configuration
+
+- tools: bash
+- model: sonnet
+- working_dir: {repo_path}
+- worktree: true
+
+## Steps
+
+1. Run `pnpm install` to refresh the lockfile
+2. Run `pnpm test` to confirm the suite still passes
+3. Commit the lockfile change with `git commit -am "chore: refresh lockfile"`
+
+## Validation
+
+- `pnpm test` exit code is 0
+- A new commit exists on the current branch with message starting `chore: refresh lockfile`
+```
+
+Table (`.nightshift/dep-bump/table.csv`):
+
+```csv
+row,repo_path,name,upgrade
+1,/Users/you/project-a,Project A,todo
+2,/Users/you/project-b,Project B,todo
+3,/Users/you/project-c,Project C,todo
+```
+
+`manager.md` enables parallel mode:
+
+```markdown
+## Shift Configuration
+
+- name: dep-bump
+- parallel: true
+- current-batch-size: 3
+- max-batch-size: 3
+
+## Task Order
+
+1. upgrade
+```
+
+### One-time workspace-trust setup
+
+Claude Code requires you to accept its **workspace-trust dialog** in each new directory before `--worktree` works there. Do this once per target repo before starting a worktree-using shift:
+
+```bash
+for d in /Users/you/project-a /Users/you/project-b /Users/you/project-c; do
+  (cd "$d" && claude)  # accept the trust dialog, then exit immediately
+done
+```
+
+Trust is stored in `~/.claude.json` and persists indefinitely. The manager runs a pre-flight check before dispatching and aborts with a clear remediation message if any directory isn't trusted yet — so you'll know exactly which `(cd ... && claude)` invocations are still needed.
+
+The trust prerequisite **only applies when `worktree: true`**. Tasks using `working_dir` alone (no worktree) skip the trust check.
+
+### Shipping `.env` into worktrees
+
+By default, a fresh git worktree doesn't have your repo's gitignored files (like `.env` or `.env.local`). Claude Code reads a `.worktreeinclude` file at your repo root and copies the listed gitignored files into each new worktree:
+
+```text
+# .worktreeinclude in your project root
+.env
+.env.local
+config/secrets.json
+```
+
+See the [Claude Code worktree docs](https://code.claude.com/docs/en/worktrees#copy-gitignored-files-into-worktrees) for the full contract.
+
+### Cleanup
+
+Worktrees are cleaned up automatically when the dev subprocess exits successfully and leaves no uncommitted state. If the dev fails or leaves uncommitted changes, the worktree is preserved for inspection and listed in the shift's final summary. Clean up manually with:
+
+```bash
+(cd <working_dir> && git worktree remove --force .claude/worktrees/<name>)
+```
+
+Add `.claude/worktrees/` to each target repo's `.gitignore` so worktree contents don't appear as untracked files in the main checkout.
 
 ## Project Layout
 
 ```
 night-shift/
-  src/                  # TypeScript CLI source (init command)
-  bin/                  # CLI entry script
-  dist/                 # Compiled output (generated by build)
+  src/                       # TypeScript CLI source (init command)
+  bin/                       # CLI entry script
+  dist/                      # Compiled output (generated by build)
   templates/
-    agents/             # Manager and dev agent instructions
-    commands/           # Slash command definitions
-  test/                 # Integration tests
-  .nightshift/          # Active and archived shifts (in target projects)
-  .opencode/
-    command/            # OpenSpec slash commands (this project)
-    skills/             # OpenSpec workflow skills (this project)
+    claude/
+      agents/                # Claude Code subagent definitions
+      skills/                # Claude Code skill directories (SKILL.md + scripts/)
+      CLAUDE.md              # CLAUDE.md template fragment
+      settings.json          # .claude/settings.json template fragment
+  .claude-plugin/            # Claude Code Plugin manifest
+  agents/                    # (build output) plugin-bundled subagents
+  skills/                    # (build output) plugin-bundled skills
+  test/                      # Integration tests (init + shift execution)
+  .nightshift/               # Active and archived shifts (in target projects)
 ```
 
 ## License

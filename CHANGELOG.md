@@ -2,6 +2,83 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.1.0] - 2026-05-15
+
+### Added
+
+- **Three new task `## Configuration` fields** for per-task control of how the dev subprocess is invoked:
+  - `model: <name>` — pass a specific model (`haiku`, `sonnet`, `opus`, full IDs) as `--model` to `claude -p`. Enables cost optimization for shifts with hundreds of items.
+  - `working_dir: <path-or-placeholder>` — the directory each dev subprocess `cd`s into before running. Supports placeholders (`{column}`, `{ENV:VAR}`, `{SHIFT:*}`) for per-item resolution. The primary multi-repo enabler.
+  - `worktree: true` — when set (with `working_dir`), each dev runs inside a fresh git worktree on a unique branch (`worktree-ns-<shift>-<item>-<task>-<timestamp>`). Backed by Claude Code's native `--worktree` flag.
+- **`NIGHTSHIFT_WORKSPACE_ROOT` environment variable** — exported by `dispatch-batch.sh` so the do-task skill can locate `.nightshift/<shift>/...` artifacts even when its cwd is a different repo or worktree. The do-task skill body now reads this env var first; falls back to `pwd` if unset.
+- **Workspace-trust pre-flight check** — before dispatching any batch where items use `worktree: true`, the manager probes each unique `working_dir` for Claude Code workspace trust state. If any directory isn't trusted, the shift aborts with a clear `for d in ...; do (cd "$d" && claude); done` remediation message.
+- **Per-item worktree cleanup policy** — `dispatch-batch.sh` attempts `git worktree remove` (without `--force`) on each worktree after the subprocess exits. Clean exits + clean tree → removed. Uncommitted state or failed subprocess → preserved, with the path surfaced in the result entry and listed in the manager's final shift summary.
+- **README "Multi-repo shifts" section** with a concrete cross-repo example, the workspace-trust setup recipe, `.worktreeinclude` pointer, and cleanup commands.
+
+### Changed
+
+- Manager prose adds Configuration parsing, placeholder resolution for `working_dir`, the trust pre-flight step, extended manifest schema, and a "Preserved worktrees" subsection in the completion summary.
+- `dispatch-batch.sh` manifest schema gains `working_dir`, `worktree`, `worktree_name`, and `model` per item. Result schema gains `worktree_preserved` per item.
+- `/nightshift-add-task` skill now prompts for the three new optional Configuration fields when guiding the user through task creation.
+
+## [3.0.0] - 2026-05-15
+
+### BREAKING
+
+- **Dev moves from subagent to top-level `claude -p` subprocess.** The `nightshift-dev` Claude Code subagent is removed. Dev work now runs as a fresh `claude -p` subprocess of a new `/nightshift-do-task` skill, spawned by the manager via the bundled `dispatch-batch.sh` helper. The dev subprocess inherits every MCP the user has configured at the user level (Slack, Drive, Playwright, internal MCPs, etc.) — no per-task or per-shift MCP setup required.
+- **Manager `tools` allowlist swap.** The manager subagent no longer carries `Agent(nightshift-dev)` in its `tools` list. Instead it gains `Bash(claude *)` (added to `.claude/settings.json`'s `permissions.allow`) so it can spawn dev subprocesses. The manager cannot delegate to any subagent.
+- **`nightshift init` removes legacy `nightshift-dev.md` on upgrade.** Unmodified 2.x files are deleted silently; user-customized files are renamed to `<file>.bak.<timestamp>` with a warning.
+- **Permission posture.** Dev subprocesses run with `--permission-mode auto` when available; the manager probes once per shift and falls back to `--permission-mode bypassPermissions` when auto mode's eligibility constraints aren't met. Auto mode requires Claude Code v2.1.83+, a Max/Team/Enterprise/API plan, an eligible Sonnet/Opus model, and the Anthropic API provider.
+
+### Added
+
+- `/nightshift-do-task <shift> <task> <item-id> [--read-only]` — new Claude Code skill executed by every dev subprocess. Resolves the shift artifacts, performs template substitution, executes steps, self-validates, retries up to 3 attempts, and emits a structured JSON `result` event.
+- `dispatch-batch.sh` — bundled helper (installed at `.claude/skills/nightshift-start/scripts/dispatch-batch.sh`) that takes a JSON manifest of items, spawns N concurrent `claude -p` subprocesses, parses each result event, and emits a consolidated JSON document for the manager. Used for both serial (1-item) and parallel (N-item) dispatch.
+- Per-item stream-json logs at `.nightshift/<shift>/logs/<item-id>-<task>-<timestamp>.jsonl`. Users can `tail -f` any log mid-shift for real-time observability. Logs are gitignored by default.
+- Test runner escape hatch via `NIGHTSHIFT_TEST_NO_AUTO_MODE` env var — when set, the auto-mode probe is bypassed and dev subprocesses use `bypassPermissions` directly. Useful for CI/test environments where auto mode is unavailable.
+
+### Changed
+
+- `test/benchmarks.json` baselines reset. The architectural shift makes prior numbers incomparable.
+- `.nightshift/.gitignore` now includes `**/logs/` and `.batch-manifest.json`.
+- README, AGENTS, and the template `CLAUDE.md` rewritten to describe the new architecture, MCP inheritance, permission mode, and observability story.
+- Plugin manifest version syncs to 3.0.0 automatically via `build.js`.
+
+### Removed
+
+- `templates/claude/agents/nightshift-dev.md` deleted. The role's behavior now lives in the `/nightshift-do-task` skill body.
+
+## [2.0.0] - 2026-05-15
+
+### BREAKING
+
+- **Dropped OpenCode runtime support.** Nightshift now installs exclusively for Claude Code. The `--target` flag has been removed from `nightshift init` (it accepted no positional alternative — the command always scaffolds Claude Code now), the `--runtime` flag and `NIGHTSHIFT_TEST_RUNTIMES` env var have been removed from the integration test runner, and the `templates/opencode/` template tree has been deleted from the published package. Public CLI exports drop `Target`, `targetIncludes`, `resolveTarget`, and `writeOpenCodeCommandFiles`. Users who depend on the OpenCode runtime should stay on the 1.1.x line.
+
+### Changed
+
+- `test/benchmarks.json` no longer carries per-runtime suffixes — keys like `nightshift-start.claude` are now `nightshift-start`. OpenCode-suffixed entries are deleted.
+- `package.json` drops the `test:integration:opencode`, `test:integration:both`, and `test:integration:claude` scripts in favor of the single `test:integration` script.
+- `README.md` and `AGENTS.md` rewritten to describe a single-runtime product. The Playwright-for-OpenCode section is removed.
+
+## [Unreleased]
+
+### Added
+
+- **Claude Code support** alongside OpenCode. `nightshift init` now accepts `--target=<claude|opencode|both>` (auto-detected when omitted) and scaffolds the appropriate runtime files. Claude Code installs include:
+  - Subagents at `.claude/agents/nightshift-{manager,dev}.md` with native subagent frontmatter (`tools: Agent(nightshift-dev), …`, `mcpServers` example for Playwright).
+  - Six skills at `.claude/skills/nightshift-{create,add-task,update-table,start,test-task,archive}/SKILL.md`, each `disable-model-invocation: true` with `allowed-tools: Bash(qsv *) Bash(flock *)`.
+  - `/nightshift-start` uses `context: fork` + `agent: nightshift-manager` for declarative delegation; pre-flight summary is inlined via dynamic shell injection.
+  - Bundled scripts under `scripts/` referenced via `${CLAUDE_SKILL_DIR}` for portable resolution.
+  - Marker-merged `CLAUDE.md` (`<!-- nightshift:start -->` / `<!-- nightshift:end -->`) and idempotent `.claude/settings.json` merge.
+- **Claude Code Plugin** distribution: the npm package now publishes a `.claude-plugin/plugin.json` manifest plus root-level `agents/` and `skills/` directories materialized from `templates/claude/` at build time.
+- New `tsx test/init-tests.ts` suite (14 tests) covering target selection, auto-detection, settings.json merge, CLAUDE.md merge, prose parity, and benchmark tracking. `pnpm test` runs init tests first, then the integration suite.
+- Integration runner (`test/run-tests.ts`) now drives shifts under both OpenCode and Claude Code from the same fixtures. Selection is via `--runtime=<opencode|claude|both>` or `NIGHTSHIFT_TEST_RUNTIMES=...`; auto-detects when no flag is given. Each per-runtime test gets a separate benchmark entry (e.g. `nightshift-start.opencode` vs `nightshift-start.claude`). Added `pnpm test:integration:opencode`, `pnpm test:integration:claude`, and `pnpm test:integration:both` scripts.
+
+### Changed
+
+- Templates reorganized: `templates/agents/` → `templates/opencode/agents/`, `templates/commands/` → `templates/opencode/commands/`. New `templates/claude/` tree alongside.
+- `package.json` adds `claude-code` keyword and includes `.claude-plugin/`, `agents/`, and `skills/` in published files.
+
 ## [1.0.2] - 2026-02-19
 
 ### Added

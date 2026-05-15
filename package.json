@@ -1,10 +1,10 @@
 {
   "name": "@johndaskovsky/nightshift",
-  "version": "1.0.2",
+  "version": "3.1.0",
   "description": "CLI installer for the Nightshift AI agent orchestration framework",
   "keywords": [
     "nightshift",
-    "opencode",
+    "claude-code",
     "ai-agents",
     "cli"
   ],
@@ -22,11 +22,16 @@
   "files": [
     "bin/",
     "dist/",
-    "templates/"
+    "templates/",
+    ".claude-plugin/",
+    "agents/",
+    "skills/"
   ],
   "scripts": {
     "build": "node build.js",
-    "test": "tsx test/run-tests.ts",
+    "test": "tsx test/init-tests.ts && tsx test/run-tests.ts",
+    "test:init": "tsx test/init-tests.ts",
+    "test:integration": "tsx test/run-tests.ts",
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
