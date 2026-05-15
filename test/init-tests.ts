@@ -2,9 +2,9 @@
 /**
  * Nightshift init/scaffolder tests.
  *
- * These tests do NOT require OpenCode or Claude Code — they exercise the
- * `nightshift init` scaffolder against temporary fixture directories. Run
- * before `run-tests.ts` (which requires OpenCode and runs full shifts).
+ * These tests do NOT require Claude Code — they exercise the `nightshift init`
+ * scaffolder against temporary fixture directories. Run before `run-tests.ts`
+ * (which requires Claude Code and runs full shifts).
  *
  * Usage: tsx test/init-tests.ts
  */
@@ -27,7 +27,6 @@ const PROJECT_ROOT = resolve(__dirname, "..");
 const FIXTURES_ROOT = join(__dirname, "init-workspace");
 const BIN_PATH = join(PROJECT_ROOT, "bin", "nightshift.js");
 const BENCHMARKS_PATH = join(__dirname, "benchmarks.json");
-const PROSE_PARITY_TOLERANCE_PCT = 8;
 
 interface TestCase {
   name: string;
@@ -107,26 +106,10 @@ function frontmatter(filePath: string): { front: string; body: string } {
 
 const tests: TestCase[] = [
   {
-    // 8.1 — regression: --target=opencode produces only .opencode/ and .nightshift/
-    name: "init --target=opencode (regression)",
+    name: "init writes the full Claude layout",
     run: () => {
-      const dir = newFixture("opencode-only");
-      const { exitCode, stdout } = runInit(dir, ["--target=opencode"]);
-      assert(exitCode === 0, `nightshift init exited ${exitCode}\n${stdout}`);
-      assertExists(join(dir, ".opencode/agents/nightshift-manager.md"), "opencode manager");
-      assertExists(join(dir, ".opencode/agents/nightshift-dev.md"), "opencode dev");
-      assertExists(join(dir, ".opencode/commands/nightshift-start.md"), "opencode start cmd");
-      assertExists(join(dir, ".nightshift/.gitignore"), "nightshift gitignore");
-      assert(!existsSync(join(dir, ".claude")), ".claude/ should NOT exist for opencode target");
-      assert(!existsSync(join(dir, "CLAUDE.md")), "CLAUDE.md should NOT exist for opencode target");
-    },
-  },
-  {
-    // 8.2 — claude target writes the full Claude layout
-    name: "init --target=claude layout",
-    run: () => {
-      const dir = newFixture("claude-only");
-      const { exitCode } = runInit(dir, ["--target=claude"]);
+      const dir = newFixture("claude-layout");
+      const { exitCode } = runInit(dir);
       assert(exitCode === 0, "nightshift init exited non-zero");
       for (const p of [
         ".claude/agents/nightshift-manager.md",
@@ -142,49 +125,33 @@ const tests: TestCase[] = [
         ".claude/skills/nightshift-archive/scripts/archive.sh",
         ".claude/settings.json",
         "CLAUDE.md",
+        ".nightshift/.gitignore",
       ]) {
         assertExists(join(dir, p), p);
       }
-      // No OpenCode artifacts
-      assert(!existsSync(join(dir, ".opencode")), ".opencode/ should NOT exist for claude target");
-      // Scripts are executable
       const startScript = join(dir, ".claude/skills/nightshift-start/scripts/preflight.sh");
       const mode = statSync(startScript).mode;
       assert((mode & 0o111) !== 0, "preflight.sh should be executable");
     },
   },
   {
-    // 8.3 — both target writes both trees
-    name: "init --target=both writes both trees",
+    name: "init rejects the legacy --target flag",
     run: () => {
-      const dir = newFixture("both");
-      const { exitCode } = runInit(dir, ["--target=both"]);
-      assert(exitCode === 0, "nightshift init exited non-zero");
-      assertExists(join(dir, ".opencode/agents/nightshift-manager.md"), "opencode manager");
-      assertExists(join(dir, ".claude/agents/nightshift-manager.md"), "claude manager");
-      assertExists(join(dir, ".claude/skills/nightshift-start/SKILL.md"), "claude start skill");
-      assertExists(join(dir, "CLAUDE.md"), "CLAUDE.md");
+      const dir = newFixture("legacy-target-flag");
+      const { exitCode, stdout, stderr } = runInit(dir, ["--target=claude"]);
+      assert(exitCode !== 0, "init should exit non-zero for unknown flag");
+      assertContains(
+        stdout + stderr,
+        "unknown option",
+        "commander error for unknown --target flag",
+      );
     },
   },
   {
-    // 8.4 — auto-detect when only .claude/ exists
-    name: "init auto-detects claude when .claude/ exists",
-    run: () => {
-      const dir = newFixture("autodetect-claude");
-      mkdirSync(join(dir, ".claude"), { recursive: true });
-      const { exitCode, stdout } = runInit(dir, []);
-      assert(exitCode === 0, "init exited non-zero");
-      assertContains(stdout, "Target: claude (auto-detected)", "auto-detect output");
-      assert(!existsSync(join(dir, ".opencode")), ".opencode/ should NOT exist after auto-detect=claude");
-      assertExists(join(dir, ".claude/skills/nightshift-start/SKILL.md"), "start skill");
-    },
-  },
-  {
-    // 8.5 — every Claude SKILL.md sets disable-model-invocation: true and allowed-tools
     name: "every SKILL.md has disable-model-invocation and allowed-tools",
     run: () => {
       const dir = newFixture("skill-frontmatter");
-      runInit(dir, ["--target=claude"]);
+      runInit(dir);
       const skillsDir = join(dir, ".claude/skills");
       const skillNames = readdirSync(skillsDir).filter((n) =>
         statSync(join(skillsDir, n)).isDirectory(),
@@ -200,22 +167,20 @@ const tests: TestCase[] = [
     },
   },
   {
-    // 8.6 — start skill uses context: fork + agent: nightshift-manager
     name: "nightshift-start SKILL.md uses context: fork + agent: nightshift-manager",
     run: () => {
       const dir = newFixture("start-fork");
-      runInit(dir, ["--target=claude"]);
+      runInit(dir);
       const { front } = frontmatter(join(dir, ".claude/skills/nightshift-start/SKILL.md"));
       assertContains(front, "context: fork", "context: fork");
       assertContains(front, "agent: nightshift-manager", "agent: nightshift-manager");
     },
   },
   {
-    // 8.7 — Claude manager body is under 20000 characters
     name: "claude manager body under 20000 characters",
     run: () => {
       const dir = newFixture("manager-budget");
-      runInit(dir, ["--target=claude"]);
+      runInit(dir);
       const { body } = frontmatter(join(dir, ".claude/agents/nightshift-manager.md"));
       assert(
         body.length < 20000,
@@ -224,13 +189,12 @@ const tests: TestCase[] = [
     },
   },
   {
-    // 8.8 — settings.json idempotency
     name: "settings.json idempotent re-runs",
     run: () => {
       const dir = newFixture("settings-idempotent");
-      runInit(dir, ["--target=claude"]);
-      runInit(dir, ["--target=claude"]);
-      runInit(dir, ["--target=claude"]);
+      runInit(dir);
+      runInit(dir);
+      runInit(dir);
       const settings = JSON.parse(readFile(join(dir, ".claude/settings.json")));
       const allow: string[] = settings.permissions.allow;
       const qsvCount = allow.filter((e) => e === "Bash(qsv *)").length;
@@ -240,7 +204,6 @@ const tests: TestCase[] = [
     },
   },
   {
-    // 8.9 — settings.json preserves user content during merge
     name: "settings.json preserves user-authored content",
     run: () => {
       const dir = newFixture("settings-merge");
@@ -252,7 +215,7 @@ const tests: TestCase[] = [
           theme: "dark",
         }) + "\n",
       );
-      runInit(dir, ["--target=claude"]);
+      runInit(dir);
       const settings = JSON.parse(readFile(join(dir, ".claude/settings.json")));
       assert(settings.theme === "dark", "user theme preserved");
       assert(
@@ -274,14 +237,13 @@ const tests: TestCase[] = [
     },
   },
   {
-    // 8.10 — malformed settings.json halts init
     name: "malformed settings.json halts init and preserves file",
     run: () => {
       const dir = newFixture("settings-malformed");
       mkdirSync(join(dir, ".claude"), { recursive: true });
       const malformed = "{not valid json";
       writeFileSync(join(dir, ".claude/settings.json"), malformed);
-      const { exitCode, stdout, stderr } = runInit(dir, ["--target=claude"]);
+      const { exitCode, stdout, stderr } = runInit(dir);
       assert(exitCode !== 0, "init should exit non-zero on malformed settings.json");
       assertContains(stdout + stderr, "Refusing to overwrite malformed JSON", "error message");
       const after = readFile(join(dir, ".claude/settings.json"));
@@ -289,14 +251,13 @@ const tests: TestCase[] = [
     },
   },
   {
-    // 8.11 — CLAUDE.md marker-based replacement is idempotent and preserves surrounding content
     name: "CLAUDE.md marker replacement preserves surrounding content and is idempotent",
     run: () => {
       const dir = newFixture("claudemd-markers");
       const userContent =
         "# My Project\n\nIntro paragraph.\n\n<!-- nightshift:start -->\nold section\n<!-- nightshift:end -->\n\nUser paragraph after.\n";
       writeFileSync(join(dir, "CLAUDE.md"), userContent);
-      runInit(dir, ["--target=claude"]);
+      runInit(dir);
       const after1 = readFile(join(dir, "CLAUDE.md"));
       assertContains(after1, "# My Project", "preserved heading");
       assertContains(after1, "User paragraph after.", "preserved trailing content");
@@ -305,8 +266,7 @@ const tests: TestCase[] = [
         !after1.includes("old section"),
         "old Nightshift section should be replaced",
       );
-      // Idempotent
-      runInit(dir, ["--target=claude"]);
+      runInit(dir);
       const after2 = readFile(join(dir, "CLAUDE.md"));
       const startCount = (after2.match(/nightshift:start/g) ?? []).length;
       const endCount = (after2.match(/nightshift:end/g) ?? []).length;
@@ -315,12 +275,11 @@ const tests: TestCase[] = [
     },
   },
   {
-    // 8.12 — CLAUDE.md append-and-warn when markers absent
     name: "CLAUDE.md append-and-warn when markers absent",
     run: () => {
       const dir = newFixture("claudemd-append");
       writeFileSync(join(dir, "CLAUDE.md"), "# Existing Project\n\nUser content.\n");
-      const { stdout } = runInit(dir, ["--target=claude"]);
+      const { stdout } = runInit(dir);
       const after = readFile(join(dir, "CLAUDE.md"));
       assertContains(after, "# Existing Project", "preserved original heading");
       assertContains(after, "<!-- nightshift:start -->", "appended start marker");
@@ -329,49 +288,14 @@ const tests: TestCase[] = [
     },
   },
   {
-    // 8.13 — prose parity: OpenCode and Claude manager bodies match modulo
-    // a small allowlist of substitutions. Compares character lengths of the
-    // bodies after stripping frontmatter and runtime-specific phrases.
-    name: "manager prose parity (OpenCode ↔ Claude)",
+    name: "init benchmark",
     run: () => {
-      const opencodePath = join(
-        PROJECT_ROOT,
-        "templates/opencode/agents/nightshift-manager.md",
-      );
-      const claudePath = join(PROJECT_ROOT, "templates/claude/agents/nightshift-manager.md");
-      const { body: ocBody } = frontmatter(opencodePath);
-      const { body: clBody } = frontmatter(claudePath);
-      const norm = (s: string): string =>
-        s
-          .replace(/Task tool/g, "Agent")
-          .replace(/spawn a `nightshift-dev` subagent/g, "invoke the nightshift-dev agent")
-          .replace(/spawn N `nightshift-dev` subagents/gi, "invoke N nightshift-dev agents")
-          .replace(/dev subagent/gi, "dev agent")
-          .replace(/Agent tool/g, "Task tool")
-          .replace(/N parallel Agent tool calls/gi, "N parallel Task tool calls")
-          .replace(/\s+/g, " ")
-          .trim();
-      const ocNorm = norm(ocBody);
-      const clNorm = norm(clBody);
-      const longer = Math.max(ocNorm.length, clNorm.length);
-      const shorter = Math.min(ocNorm.length, clNorm.length);
-      const driftPct = ((longer - shorter) / longer) * 100;
-      assert(
-        driftPct < PROSE_PARITY_TOLERANCE_PCT,
-        `manager prose drifted ${driftPct.toFixed(1)}% (threshold ${PROSE_PARITY_TOLERANCE_PCT}%); update tolerance or re-sync templates`,
-      );
-    },
-  },
-  {
-    // 8.14 — benchmark entry: track init --target=claude duration
-    name: "init --target=claude benchmark",
-    run: () => {
-      const dir = newFixture("benchmark-claude");
+      const dir = newFixture("benchmark-init");
       const t0 = performance.now();
-      const { exitCode } = runInit(dir, ["--target=claude"]);
+      const { exitCode } = runInit(dir);
       const durationMs = Math.round(performance.now() - t0);
       assert(exitCode === 0, "init failed");
-      const key = "init-claude";
+      const key = "init";
       const prior = benchmarks[key];
       benchmarks[key] = {
         durationMs:
@@ -379,7 +303,6 @@ const tests: TestCase[] = [
         updatedAt: new Date().toISOString(),
       };
       writeFileSync(BENCHMARKS_PATH, JSON.stringify(benchmarks, null, 2) + "\n");
-      // sanity: should run in well under 5s
       assert(durationMs < 5000, `init too slow: ${durationMs}ms`);
     },
   },
@@ -412,7 +335,6 @@ function main(): void {
     `${successes.length}/${tests.length} passed${failures.length > 0 ? `, ${failures.length} failed` : ""}`,
   );
 
-  // Cleanup fixtures on success
   if (failures.length === 0 && existsSync(FIXTURES_ROOT)) {
     rmSync(FIXTURES_ROOT, { recursive: true });
   }

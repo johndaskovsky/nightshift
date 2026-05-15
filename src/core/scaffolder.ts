@@ -10,8 +10,6 @@ import {
 import { join, relative } from "node:path";
 import { getTemplatePath } from "./templates.js";
 
-export type Target = "claude" | "opencode" | "both";
-
 export type WriteAction = "created" | "updated" | "skipped";
 
 export interface ScaffoldOptions {
@@ -29,40 +27,14 @@ const NIGHTSHIFT_MARKER_END = "<!-- nightshift:end -->";
 const REQUIRED_BASH_ALLOW: ReadonlyArray<string> = ["Bash(qsv *)", "Bash(flock *)"];
 
 /**
- * Resolve which install target the user wants. Auto-detects when no flag is
- * provided based on the presence of `.claude/` and `.opencode/` directories.
+ * Create the required Claude Code directory structure.
  */
-export function resolveTarget(targetDir: string, flag: string | undefined): Target {
-  if (flag) {
-    if (flag !== "claude" && flag !== "opencode" && flag !== "both") {
-      throw new Error(`Invalid --target value: ${flag}. Must be one of: claude, opencode, both.`);
-    }
-    return flag;
-  }
-  const hasClaude = existsSync(join(targetDir, ".claude"));
-  const hasOpencode = existsSync(join(targetDir, ".opencode"));
-  if (hasClaude && !hasOpencode) return "claude";
-  if (hasOpencode && !hasClaude) return "opencode";
-  return "both";
-}
-
-export function targetIncludes(target: Target, candidate: "claude" | "opencode"): boolean {
-  return target === candidate || target === "both";
-}
-
-/**
- * Create the required directory structure for the selected target(s).
- */
-export function scaffoldDirectories(targetDir: string, target: Target): void {
-  const dirs: string[] = [join(targetDir, ".nightshift", "archive")];
-  if (targetIncludes(target, "opencode")) {
-    dirs.push(join(targetDir, ".opencode", "agents"));
-    dirs.push(join(targetDir, ".opencode", "commands"));
-  }
-  if (targetIncludes(target, "claude")) {
-    dirs.push(join(targetDir, ".claude", "agents"));
-    dirs.push(join(targetDir, ".claude", "skills"));
-  }
+export function scaffoldDirectories(targetDir: string): void {
+  const dirs: string[] = [
+    join(targetDir, ".nightshift", "archive"),
+    join(targetDir, ".claude", "agents"),
+    join(targetDir, ".claude", "skills"),
+  ];
   for (const dir of dirs) {
     mkdirSync(dir, { recursive: true });
   }
@@ -87,47 +59,16 @@ function writeTemplateFile(
 }
 
 /**
- * Write agent template files for the selected target(s).
+ * Write the Claude Code subagent files.
  */
-export function writeAgentFiles(options: ScaffoldOptions & { target: Target }): ScaffoldResult {
+export function writeAgentFiles(options: ScaffoldOptions): ScaffoldResult {
   const result: ScaffoldResult = { actions: [] };
   const agentFiles = ["nightshift-manager.md", "nightshift-dev.md"];
-
-  if (targetIncludes(options.target, "opencode")) {
-    const agentsDir = getTemplatePath("opencode", "agents");
-    const targetAgentDir = join(options.targetDir, ".opencode", "agents");
-    for (const file of agentFiles) {
-      writeTemplateFile(join(agentsDir, file), join(targetAgentDir, file), options, result);
-    }
+  const agentsDir = getTemplatePath("claude", "agents");
+  const targetAgentDir = join(options.targetDir, ".claude", "agents");
+  for (const file of agentFiles) {
+    writeTemplateFile(join(agentsDir, file), join(targetAgentDir, file), options, result);
   }
-
-  if (targetIncludes(options.target, "claude")) {
-    const agentsDir = getTemplatePath("claude", "agents");
-    const targetAgentDir = join(options.targetDir, ".claude", "agents");
-    for (const file of agentFiles) {
-      writeTemplateFile(join(agentsDir, file), join(targetAgentDir, file), options, result);
-    }
-  }
-
-  return result;
-}
-
-/**
- * Write the existing OpenCode slash command files.
- */
-export function writeOpenCodeCommandFiles(options: ScaffoldOptions): ScaffoldResult {
-  const result: ScaffoldResult = { actions: [] };
-  const commandsDir = getTemplatePath("opencode", "commands");
-  const targetCommandDir = join(options.targetDir, ".opencode", "commands");
-
-  const commandFiles = readdirSync(commandsDir).filter(
-    (f) => f.startsWith("nightshift-") && f.endsWith(".md"),
-  );
-
-  for (const file of commandFiles) {
-    writeTemplateFile(join(commandsDir, file), join(targetCommandDir, file), options, result);
-  }
-
   return result;
 }
 
@@ -270,7 +211,7 @@ export function writeClaudeMdFile(options: ScaffoldOptions): ScaffoldResult {
 }
 
 /**
- * Write the .nightshift/.gitignore file (target-agnostic).
+ * Write the .nightshift/.gitignore file.
  */
 export function writeGitignoreFile(options: ScaffoldOptions): ScaffoldResult {
   const result: ScaffoldResult = { actions: [] };

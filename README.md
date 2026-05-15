@@ -14,7 +14,7 @@ Long-running unsupervised agent framework
 
 A batch processing framework for AI agents. Define a table of items, write task instructions, and let a two-agent system (manager, dev) work through them autonomously with built-in retries, self-improvement, and self-validation.
 
-Nightshift runs inside [OpenCode](https://opencode.ai/) and [Claude Code](https://code.claude.com/) as a set of custom subagents, slash commands (OpenCode) or Skills (Claude Code). It is distributed as a TypeScript CLI installer (`nightshift init`) that scaffolds agent and command files into target projects, and as a Claude Code Plugin for native plugin discovery.
+Nightshift runs inside [Claude Code](https://code.claude.com/) as a set of custom subagents and Skills. It is distributed as a TypeScript CLI installer (`nightshift init`) that scaffolds agent and skill files into target projects, and as a Claude Code Plugin for native plugin discovery.
 
 ## How It Works
 
@@ -33,7 +33,7 @@ todo --> done
 
 ## Prerequisites
 
-- [OpenCode](https://opencode.ai/) **or** [Claude Code](https://code.claude.com/)
+- [Claude Code](https://code.claude.com/)
 - [qsv](https://github.com/dathere/qsv) CSV toolkit (required) -- install via `brew install qsv` or download from [GitHub releases](https://github.com/dathere/qsv/releases) for non-Homebrew platforms
 - [flock](https://github.com/discoteq/flock) file locking utility (required) -- install via `brew install flock` or use the version bundled with `util-linux` on Linux
 
@@ -49,22 +49,10 @@ Then initialize Nightshift in your project:
 
 ```bash
 cd your-project
-nightshift init                  # auto-detect: install for both runtimes if neither is present
-nightshift init --target=claude  # Claude Code only
-nightshift init --target=opencode # OpenCode only
-nightshift init --target=both    # both runtimes
+nightshift init
 ```
 
-`nightshift init` auto-detects the install target based on which directories already exist:
-
-- `.claude/` exists, `.opencode/` does not → installs for Claude Code
-- `.opencode/` exists, `.claude/` does not → installs for OpenCode
-- both exist → installs for both
-- neither exists → installs for both (so you can pick later)
-
-Pass `-t` (or `--target`) to override the detection.
-
-For Claude Code, the CLI scaffolds `.claude/agents/`, `.claude/skills/`, `.claude/settings.json` (merged), and a project `CLAUDE.md` (merged via `<!-- nightshift:start -->` / `<!-- nightshift:end -->` markers). For OpenCode, it scaffolds `.opencode/agents/` and `.opencode/commands/`. Both runtimes share the `.nightshift/` shift data directory.
+The CLI scaffolds `.claude/agents/`, `.claude/skills/`, `.claude/settings.json` (merged), and a project `CLAUDE.md` (merged via `<!-- nightshift:start -->` / `<!-- nightshift:end -->` markers), alongside the `.nightshift/` shift data directory.
 
 To regenerate framework files after upgrading the CLI, run `nightshift init` again. It detects the existing installation and adjusts its output messaging accordingly. All framework-managed files are overwritten with the latest versions; shift data in `.nightshift/` is never touched.
 
@@ -72,7 +60,7 @@ To regenerate framework files after upgrading the CLI, run `nightshift init` aga
 
 The npm package also publishes a Claude Code Plugin manifest. If you prefer plugin-style distribution over the CLI installer, you can install Nightshift via Claude Code's plugin discovery (no `nightshift init` step needed). The plugin bundles the same subagent and skill files; project-scoped installs from `nightshift init` will override plugin-supplied files per [Claude Code's precedence rules](https://code.claude.com/docs/en/skills#where-skills-live).
 
-> ⚠️ Don't run both at once: if you install Nightshift as a plugin **and** also run `nightshift init --target=claude` in the same project, you'll have two copies of the skills. The CLI prints a warning when it detects a likely Nightshift plugin reference in `~/.claude/settings.json`.
+> ⚠️ Don't run both at once: if you install Nightshift as a plugin **and** also run `nightshift init` in the same project, you'll have two copies of the skills. The CLI prints a warning when it detects a likely Nightshift plugin reference in `~/.claude/settings.json`.
 
 ### First-run note for Claude Code users
 
@@ -80,7 +68,7 @@ Claude Code watches skill directories for changes during a session, but creating
 
 ## Quick Start
 
-All commands run inside the OpenCode assistant or Claude Code. The slash command names are identical across runtimes.
+All commands run inside Claude Code.
 
 ### 1. Create a shift
 
@@ -379,9 +367,9 @@ All placeholders use fail-fast behavior. A missing column value, undefined envir
 | Manager | yes | yes | `qsv`, `flock` | dev only | no |
 | Dev | yes | yes | `mkdir`, `qsv`, `flock` | none | optional (see below) |
 
-### Enabling Playwright (Claude Code)
+### Enabling Playwright
 
-The Claude Code dev subagent ships with a commented-out Playwright MCP server example. To enable browser automation for shifts that need it, edit `.claude/agents/nightshift-dev.md` and uncomment the `mcpServers` block:
+The dev subagent ships with a commented-out Playwright MCP server example. To enable browser automation for shifts that need it, edit `.claude/agents/nightshift-dev.md` and uncomment the `mcpServers` block:
 
 ```yaml
 mcpServers:
@@ -393,10 +381,6 @@ mcpServers:
 
 This scopes Playwright to the dev subagent only — the parent conversation does not see Playwright tools. If you prefer to share a Playwright MCP server across all subagents, configure it in the project's `.mcp.json` instead.
 
-### Enabling Playwright (OpenCode)
-
-The OpenCode dev agent declares `playwright_*: true` in its frontmatter, granting the agent access to all Playwright tools. Install Playwright per the OpenCode docs.
-
 ## Project Layout
 
 ```
@@ -405,9 +389,6 @@ night-shift/
   bin/                       # CLI entry script
   dist/                      # Compiled output (generated by build)
   templates/
-    opencode/
-      agents/                # OpenCode subagent definitions
-      commands/              # OpenCode slash command definitions
     claude/
       agents/                # Claude Code subagent definitions
       skills/                # Claude Code skill directories (SKILL.md + scripts/)
@@ -416,7 +397,7 @@ night-shift/
   .claude-plugin/            # Claude Code Plugin manifest
   agents/                    # (build output) plugin-bundled subagents
   skills/                    # (build output) plugin-bundled skills
-  test/                      # Integration tests (init + OpenCode shift execution)
+  test/                      # Integration tests (init + shift execution)
   .nightshift/               # Active and archived shifts (in target projects)
 ```
 

@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.0] - 2026-05-15
+
+### BREAKING
+
+- **Dropped OpenCode runtime support.** Nightshift now installs exclusively for Claude Code. The `--target` flag has been removed from `nightshift init` (it accepted no positional alternative — the command always scaffolds Claude Code now), the `--runtime` flag and `NIGHTSHIFT_TEST_RUNTIMES` env var have been removed from the integration test runner, and the `templates/opencode/` template tree has been deleted from the published package. Public CLI exports drop `Target`, `targetIncludes`, `resolveTarget`, and `writeOpenCodeCommandFiles`. Users who depend on the OpenCode runtime should stay on the 1.1.x line.
+
+### Changed
+
+- `test/benchmarks.json` no longer carries per-runtime suffixes — keys like `nightshift-start.claude` are now `nightshift-start`. OpenCode-suffixed entries are deleted.
+- `package.json` drops the `test:integration:opencode`, `test:integration:both`, and `test:integration:claude` scripts in favor of the single `test:integration` script.
+- `README.md` and `AGENTS.md` rewritten to describe a single-runtime product. The Playwright-for-OpenCode section is removed.
+
 ## [Unreleased]
 
 ### Added
