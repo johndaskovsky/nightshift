@@ -1,5 +1,8 @@
-## ADDED Requirements
+# nightshift-tasks Specification
 
+## Purpose
+Defines the task file format (Configuration, Steps, Validation sections), the per-task execution-config fields (tools, model, working_dir, worktree), and section mutability rules.
+## Requirements
 ### Requirement: Task file format
 The system SHALL define tasks as Markdown files with three mandatory sections: Configuration, Steps, and Validation. Each task file SHALL be named `<task_name>.md` in snake_case (no hyphens — hyphens conflict with qsv column selectors).
 
@@ -12,19 +15,43 @@ The system SHALL define tasks as Markdown files with three mandatory sections: C
 - **THEN** the system SHALL report an error identifying the missing section
 
 ### Requirement: Task configuration section
-The Configuration section SHALL declare the tools and optional model suggestion needed to execute the task.
+The Configuration section SHALL declare the tools, optional model selection, optional working directory, and optional worktree flag for executing the task. Fields are formatted as bulleted `- key: value` lines.
 
 #### Scenario: Tools declaration
 - **WHEN** a task configuration lists `tools: playwright, google_workspace`
 - **THEN** the executing agent SHALL have access to the Playwright and Google Workspace MCP tools
 
-#### Scenario: Model suggestion
-- **WHEN** a task configuration includes `model: claude-sonnet`
-- **THEN** the system SHALL treat this as a suggestion (not enforced) and note it in the task context provided to the executing agent
+#### Scenario: Model selection
+- **WHEN** a task configuration includes `model: <name>` where `<name>` is a valid Claude Code model identifier (e.g., `haiku`, `sonnet`, `opus`)
+- **THEN** the dev subprocess SHALL be invoked with `--model <name>` and the named model SHALL execute the task; if the model name is unsupported by the host Claude Code version, the subprocess SHALL fail with a clear error and the manager SHALL mark the item failed without retry
+
+#### Scenario: Working directory declaration
+- **WHEN** a task configuration includes `working_dir: <path-or-placeholder>`
+- **THEN** the manager SHALL resolve placeholders (`{column_name}`, `{ENV:VAR}`, `{SHIFT:FOLDER|NAME|TABLE}`) using the item's row data, shift environment, and shift metadata, and the dispatch helper SHALL `cd` into the resolved absolute (or workspace-relative) path before invoking `claude -p` for that item
+
+#### Scenario: Working directory per-item via column placeholder
+- **WHEN** a task configuration includes `working_dir: {repo_path}` and `table.csv` has a `repo_path` column
+- **THEN** each item's dev subprocess SHALL run from the directory named in that row's `repo_path` cell
+
+#### Scenario: Working directory does not exist
+- **WHEN** the resolved `working_dir` for an item is not an existing directory at dispatch time
+- **THEN** the manager SHALL record the failure with a clear error (`working_dir does not exist: <path>`), write `failed` to that item's status in `table.csv`, and SHALL NOT retry the item
+
+#### Scenario: Worktree flag
+- **WHEN** a task configuration includes `worktree: true` AND `working_dir` is also set
+- **THEN** the dispatch helper SHALL append `--worktree <unique-name>` to the `claude -p` invocation, where `<unique-name>` follows the schema `ns-<shift>-<item-id>-<task-name>-<timestamp>`, causing Claude Code to create a git worktree under `<working_dir>/.claude/worktrees/<unique-name>/` on a branch `worktree-<unique-name>`
+
+#### Scenario: Worktree requires working_dir
+- **WHEN** a task configuration sets `worktree: true` but does NOT set `working_dir`
+- **THEN** the manager SHALL surface a configuration error during pre-flight and SHALL NOT dispatch any items for that task
+
+#### Scenario: Worktree omitted
+- **WHEN** a task configuration omits `worktree` (or sets `worktree: false`)
+- **THEN** the dispatch helper SHALL NOT pass `--worktree` to `claude -p` and no worktree SHALL be created
 
 #### Scenario: No tools declared
 - **WHEN** a task configuration has no tools listed
-- **THEN** the executing agent SHALL have access to default tools only (read, write, edit, glob, grep)
+- **THEN** the executing dev subprocess SHALL have access to default tools only (Read, Write, Edit, Bash, Glob, Grep) plus any MCPs the user has configured at the Claude Code user level
 
 ### Requirement: Task steps section
 The Steps section SHALL contain numbered instructions that the dev agent follows to execute the task on a single table item. Steps SHALL be detailed enough for unsupervised execution. The manager agent SHALL apply step improvements to the task file based on dev agent recommendations between items or batches, but SHALL only incorporate recommendations from dev processes that completed successfully. Recommendations from failed dev processes SHALL be discarded. The dev agent SHALL NOT directly edit the Steps section. Steps MAY reference environment variables using `{ENV:VAR_NAME}` syntax, shift metadata using `{SHIFT:FOLDER}`, `{SHIFT:NAME}`, or `{SHIFT:TABLE}` syntax, and table column data using `{column_name}` syntax (where `column_name` corresponds to a metadata column in table.csv).
@@ -112,3 +139,4 @@ The system SHALL enforce mutability rules for task file sections. The Steps sect
 #### Scenario: Dev cannot modify Configuration section
 - **WHEN** the dev agent attempts to modify the Configuration section of a task file
 - **THEN** the system SHALL prevent the modification — the Configuration section SHALL remain unchanged from its authored state
+

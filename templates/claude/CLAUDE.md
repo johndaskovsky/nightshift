@@ -23,6 +23,10 @@ This project has [Nightshift](https://github.com/johndaskovsky/nightshift) insta
 
 All skills set `disable-model-invocation: true`, so Claude does not auto-invoke them — type `/skill-name` explicitly.
 
+### Multi-repo shifts (3.1.0+)
+
+Tasks can target a different repository per item via `working_dir: {repo_path}` in `## Configuration` (with a `repo_path` column in `table.csv`). Add `worktree: true` to isolate each run in its own git worktree on a unique branch. Add `model: haiku|sonnet|opus` to pick a model per task. See the project README for the full recipe.
+
 ### MCP access
 
 Dev subprocesses inherit your **top-level Claude Code MCP configuration**. To make Playwright (or Slack, Drive, any other MCP) available to Nightshift task steps, configure it once at the user level — no Nightshift-specific setup is needed.

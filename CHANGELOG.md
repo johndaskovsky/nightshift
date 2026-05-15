@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.1.0] - 2026-05-15
+
+### Added
+
+- **Three new task `## Configuration` fields** for per-task control of how the dev subprocess is invoked:
+  - `model: <name>` — pass a specific model (`haiku`, `sonnet`, `opus`, full IDs) as `--model` to `claude -p`. Enables cost optimization for shifts with hundreds of items.
+  - `working_dir: <path-or-placeholder>` — the directory each dev subprocess `cd`s into before running. Supports placeholders (`{column}`, `{ENV:VAR}`, `{SHIFT:*}`) for per-item resolution. The primary multi-repo enabler.
+  - `worktree: true` — when set (with `working_dir`), each dev runs inside a fresh git worktree on a unique branch (`worktree-ns-<shift>-<item>-<task>-<timestamp>`). Backed by Claude Code's native `--worktree` flag.
+- **`NIGHTSHIFT_WORKSPACE_ROOT` environment variable** — exported by `dispatch-batch.sh` so the do-task skill can locate `.nightshift/<shift>/...` artifacts even when its cwd is a different repo or worktree. The do-task skill body now reads this env var first; falls back to `pwd` if unset.
+- **Workspace-trust pre-flight check** — before dispatching any batch where items use `worktree: true`, the manager probes each unique `working_dir` for Claude Code workspace trust state. If any directory isn't trusted, the shift aborts with a clear `for d in ...; do (cd "$d" && claude); done` remediation message.
+- **Per-item worktree cleanup policy** — `dispatch-batch.sh` attempts `git worktree remove` (without `--force`) on each worktree after the subprocess exits. Clean exits + clean tree → removed. Uncommitted state or failed subprocess → preserved, with the path surfaced in the result entry and listed in the manager's final shift summary.
+- **README "Multi-repo shifts" section** with a concrete cross-repo example, the workspace-trust setup recipe, `.worktreeinclude` pointer, and cleanup commands.
+
+### Changed
+
+- Manager prose adds Configuration parsing, placeholder resolution for `working_dir`, the trust pre-flight step, extended manifest schema, and a "Preserved worktrees" subsection in the completion summary.
+- `dispatch-batch.sh` manifest schema gains `working_dir`, `worktree`, `worktree_name`, and `model` per item. Result schema gains `worktree_preserved` per item.
+- `/nightshift-add-task` skill now prompts for the three new optional Configuration fields when guiding the user through task creation.
+
 ## [3.0.0] - 2026-05-15
 
 ### BREAKING

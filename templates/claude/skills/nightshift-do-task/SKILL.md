@@ -23,11 +23,16 @@ Parse these from `$ARGUMENTS` before doing anything else.
 
 ## Resolution
 
-**Your very first bash command MUST be `pwd`** to capture the workspace root as an absolute path. Claude Code's Bash tool persists cwd across calls — if a later task step does `cd` into the shift folder, every subsequent command runs from there until you `cd` back. So:
+**Your first bash command MUST read `$NIGHTSHIFT_WORKSPACE_ROOT`**:
 
-1. Run `pwd` as your first bash command. The output is the workspace root.
-2. **Remember the literal absolute path** in your working memory (e.g., write it down in your next response: "Workspace root: /Users/foo/myproject").
-3. Use that **literal absolute path** in every flock/qsv invocation in this skill — never recompute it via `$(pwd)` in later commands, because pwd may have moved.
+```bash
+echo "${NIGHTSHIFT_WORKSPACE_ROOT:-$(pwd)}"
+```
+
+- If `NIGHTSHIFT_WORKSPACE_ROOT` is set (the normal case when `dispatch-batch.sh` spawned this subprocess), use its value as the literal absolute workspace root.
+- If unset (rare — you were invoked manually via `claude -p` without going through the helper), fall back to the output of `pwd` at this moment.
+
+Either way, **remember the literal absolute path** in your working memory (e.g., write "Workspace root: /Users/foo/myproject" in your next response). Use that **literal absolute path** in every flock/qsv invocation in this skill. Never recompute it later via `$(pwd)` — your cwd in this subprocess is whatever `dispatch-batch.sh` set it to (a target repo or a worktree of one), which is appropriate for task-step execution but is NOT the workspace root.
 
 Concretely, derive these once and use the literal strings going forward:
 
@@ -36,6 +41,8 @@ Concretely, derive these once and use the literal strings going forward:
 | Workspace root | `/Users/foo/myproject` | Prefix for everything below |
 | Shift dir | `/Users/foo/myproject/.nightshift/<shift-name>` | Read manager.md, task file, .env |
 | Table path | `/Users/foo/myproject/.nightshift/<shift-name>/table.csv` | All flock/qsv operations |
+
+**Your cwd may NOT be the workspace root.** When the task has `working_dir` configured, your subprocess was launched with cwd set to that directory (e.g., a different repository). When `worktree: true` is also set, your cwd is a freshly-created git worktree. Task steps should generally run in that cwd (it's the right place for the task's work). Shift artifacts (`manager.md`, `<task>.md`, `table.csv`, `.env`) always live under the workspace root regardless of where you are.
 
 Whenever a task step requires running a command "in the {SHIFT:FOLDER} directory", prefer a **subshell** so the outer cwd is unaffected:
 

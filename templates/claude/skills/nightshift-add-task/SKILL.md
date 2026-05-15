@@ -36,12 +36,21 @@ Add a new task file to shift `$ARGUMENTS` and update the table with a correspond
 
 4. **Create the task file**
 
-   Write `.nightshift/<shift>/<task-name>.md`:
+   Ask the user (via `AskUserQuestion`) which optional execution-config fields they want to set. Skip any they don't need:
+
+   - **`model`** — Claude Code model identifier for this task's dev subprocesses (`haiku`, `sonnet`, `opus`, or a full model ID). Omit to use the user's default.
+   - **`working_dir`** — directory each dev subprocess `cd`s into before running. May reference a `table.csv` column via `{column_name}` (most common: `{repo_path}` paired with a `repo_path` column). Useful when the task operates on a different repository than the workspace.
+   - **`worktree`** — `true|false`. When `true`, each dev runs inside a fresh git worktree of `working_dir` on a unique branch. Requires `working_dir` to also be set. Requires a one-time `claude` invocation in each target directory to accept Claude Code's workspace-trust dialog.
+
+   Write `.nightshift/<shift>/<task-name>.md`. Include only the Configuration fields the user opted into:
 
    ```markdown
    ## Configuration
 
    - tools: <tool1>, <tool2>
+   # - model: sonnet
+   # - working_dir: {repo_path}
+   # - worktree: true
 
    ## Steps
 
@@ -53,6 +62,8 @@ Add a new task file to shift `$ARGUMENTS` and update the table with a correspond
    - <criterion 1>
    - <criterion 2>
    ```
+
+   If the user set `worktree: true` but did NOT set `working_dir`, surface a clear error and ask them to either set `working_dir` or drop `worktree: true`. The combination is invalid.
 
 5. **Add status column to table.csv**
 

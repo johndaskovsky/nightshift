@@ -235,6 +235,15 @@ const tests: TestCase[] = [
     },
   },
   {
+    name: "nightshift-do-task body documents NIGHTSHIFT_WORKSPACE_ROOT",
+    run: () => {
+      const dir = newFixture("do-task-workspace-root");
+      runInit(dir);
+      const { body } = frontmatter(join(dir, ".claude/skills/nightshift-do-task/SKILL.md"));
+      assertContains(body, "NIGHTSHIFT_WORKSPACE_ROOT", "do-task skill body references workspace-root env var");
+    },
+  },
+  {
     name: "claude manager body under 20000 characters",
     run: () => {
       const dir = newFixture("manager-budget");

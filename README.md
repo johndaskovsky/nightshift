@@ -397,6 +397,99 @@ tail -f .nightshift/my-shift/logs/3-create_page-*.jsonl | jq .
 
 Logs persist after the shift completes (handy for post-mortem). They are gitignored by default.
 
+## Multi-repo shifts
+
+Nightshift can target a different repository per item. Three optional fields in the task `## Configuration` section control where and how each dev subprocess runs:
+
+- **`working_dir: <path-or-placeholder>`** — the directory each dev subprocess `cd`s into before running. Supports the same placeholder syntax as task steps (`{column}`, `{ENV:VAR}`, `{SHIFT:FOLDER|NAME|TABLE}`), so per-item paths come from a `table.csv` column.
+- **`worktree: true`** — when set, the subprocess runs inside a git worktree of `working_dir` on a unique branch (`worktree-ns-<shift>-<item>-<task>-<timestamp>`). Each item gets its own isolated checkout — parallel items targeting the same repo don't clobber each other.
+- **`model: <name>`** — pass a specific Claude Code model (`haiku`, `sonnet`, `opus`, or a full model ID) for this task. Useful for cost control: mechanical tasks can run on `haiku`.
+
+### Example: refactor across 3 repos in parallel
+
+Task definition (`.nightshift/dep-bump/upgrade.md`):
+
+```markdown
+## Configuration
+
+- tools: bash
+- model: sonnet
+- working_dir: {repo_path}
+- worktree: true
+
+## Steps
+
+1. Run `pnpm install` to refresh the lockfile
+2. Run `pnpm test` to confirm the suite still passes
+3. Commit the lockfile change with `git commit -am "chore: refresh lockfile"`
+
+## Validation
+
+- `pnpm test` exit code is 0
+- A new commit exists on the current branch with message starting `chore: refresh lockfile`
+```
+
+Table (`.nightshift/dep-bump/table.csv`):
+
+```csv
+row,repo_path,name,upgrade
+1,/Users/you/project-a,Project A,todo
+2,/Users/you/project-b,Project B,todo
+3,/Users/you/project-c,Project C,todo
+```
+
+`manager.md` enables parallel mode:
+
+```markdown
+## Shift Configuration
+
+- name: dep-bump
+- parallel: true
+- current-batch-size: 3
+- max-batch-size: 3
+
+## Task Order
+
+1. upgrade
+```
+
+### One-time workspace-trust setup
+
+Claude Code requires you to accept its **workspace-trust dialog** in each new directory before `--worktree` works there. Do this once per target repo before starting a worktree-using shift:
+
+```bash
+for d in /Users/you/project-a /Users/you/project-b /Users/you/project-c; do
+  (cd "$d" && claude)  # accept the trust dialog, then exit immediately
+done
+```
+
+Trust is stored in `~/.claude.json` and persists indefinitely. The manager runs a pre-flight check before dispatching and aborts with a clear remediation message if any directory isn't trusted yet — so you'll know exactly which `(cd ... && claude)` invocations are still needed.
+
+The trust prerequisite **only applies when `worktree: true`**. Tasks using `working_dir` alone (no worktree) skip the trust check.
+
+### Shipping `.env` into worktrees
+
+By default, a fresh git worktree doesn't have your repo's gitignored files (like `.env` or `.env.local`). Claude Code reads a `.worktreeinclude` file at your repo root and copies the listed gitignored files into each new worktree:
+
+```text
+# .worktreeinclude in your project root
+.env
+.env.local
+config/secrets.json
+```
+
+See the [Claude Code worktree docs](https://code.claude.com/docs/en/worktrees#copy-gitignored-files-into-worktrees) for the full contract.
+
+### Cleanup
+
+Worktrees are cleaned up automatically when the dev subprocess exits successfully and leaves no uncommitted state. If the dev fails or leaves uncommitted changes, the worktree is preserved for inspection and listed in the shift's final summary. Clean up manually with:
+
+```bash
+(cd <working_dir> && git worktree remove --force .claude/worktrees/<name>)
+```
+
+Add `.claude/worktrees/` to each target repo's `.gitignore` so worktree contents don't appear as untracked files in the main checkout.
+
 ## Project Layout
 
 ```

@@ -50,6 +50,57 @@ This emits `{"auto_mode":"available","reason":null}` or `{"auto_mode":"unavailab
 - `available` → use `"permission_mode": "auto"`
 - `unavailable` → use `"permission_mode": "bypassPermissions"` and surface a one-line notice in your eventual completion summary (so the user knows the classifier guardrails weren't active)
 
+### 2a. Read task execution config
+
+For each task in Task Order, read `<task-name>.md` and parse the Configuration section for these optional fields:
+
+- `tools: <list>` — declared MCP tools (informational; user-level MCPs are inherited automatically)
+- `model: <name>` — the model identifier (`haiku`, `sonnet`, `opus`, or a full model ID) to pass as `--model <name>` to `claude -p`
+- `working_dir: <path-or-placeholder>` — the directory each dev subprocess `cd`s into before running. May contain placeholders (`{column}`, `{ENV:VAR}`, `{SHIFT:FOLDER|NAME|TABLE}`) resolved per-item
+- `worktree: true|false` — when `true` (and `working_dir` is also set), the dispatch helper invokes `claude -p` with `--worktree <name>` to run inside a git worktree of the target directory
+
+**Configuration error to surface early:** `worktree: true` without `working_dir` is invalid. If you see this combination, abort with a clear error before dispatching any items for that task.
+
+### 2b. Resolve placeholders in working_dir (per-item)
+
+When constructing the batch manifest, resolve placeholders in `working_dir` using the SAME substitution rules as task steps:
+
+- `{column_name}` → value from the item's row (read via `qsv slice --index <qsv_index>`)
+- `{ENV:VAR_NAME}` → value from the shift's `.env` file
+- `{SHIFT:FOLDER}` / `{SHIFT:NAME}` / `{SHIFT:TABLE}` → shift metadata
+
+The resolved value goes into the manifest as a literal. The dispatch helper does no further substitution.
+
+### 2c. Workspace-trust pre-flight (when any item uses worktree)
+
+If any item in the next batch has `worktree: true`, before dispatching:
+
+1. Collect the set of unique resolved `working_dir` values across the batch.
+2. For each unique directory, probe trust state by running:
+
+   ```bash
+   (cd "$dir" && claude --worktree probe-trust-$$ -p "exit" --output-format json --permission-mode bypassPermissions 2>&1) | head -c 1024
+   ```
+
+   If the output contains the workspace-trust prompt (string match: `trust dialog`, `accept the workspace trust`, or `Run claude in this directory first`), the directory is **untrusted**.
+
+3. If any directories are untrusted, abort the shift with this message (do NOT dispatch anything):
+
+   ```
+   ## Trust Required
+
+   Claude Code workspace trust has not been accepted for these directories:
+     - /path/to/repo-a
+     - /path/to/repo-b
+
+   Run `claude` once in each directory to accept the trust dialog, then re-run /nightshift-start:
+     for d in /path/to/repo-a /path/to/repo-b; do (cd "$d" && claude); done
+
+   Trust is stored in ~/.claude.json and persists across sessions.
+   ```
+
+When `worktree: false` (or omitted) for all items in the batch, **skip the trust probe entirely** — non-worktree subprocesses don't need workspace trust.
+
 ### 3. Item Selection Algorithm
 
 Use `qsv` to read item statuses when determining what to process next. Use the `row` column as the stable item identifier (the value passed to `/nightshift-do-task`).
@@ -95,20 +146,33 @@ Each batch is for a SINGLE task — you do not mix tasks within a batch.
 
 ### 4. Dispatch the Batch
 
-Build a manifest JSON document with the items to process:
+Build a manifest JSON document with the items to process. Each item carries the per-item resolved execution config:
 
 ```json
 {
   "shift": "<shift-name>",
   "items": [
-    {"item_id": "<row-value>", "task": "<task-name>"},
-    {"item_id": "<row-value>", "task": "<task-name>"}
+    {
+      "item_id": "<row-value>",
+      "task": "<task-name>",
+      "working_dir": "/abs/or/rel/path",
+      "worktree": true,
+      "worktree_name": "ns-<shift>-<row-value>-<task>-<YYYYMMDDHHMMSS>",
+      "model": "sonnet"
+    }
   ],
   "permission_mode": "auto",
   "log_dir": ".nightshift/<shift-name>/logs",
   "read_only": false
 }
 ```
+
+Per-item field rules:
+
+- `working_dir` — fully resolved literal path (placeholders already substituted). Omit or set to `null` if the task didn't declare it.
+- `worktree` — boolean. Default `false`. When `true`, you MUST also set a unique `worktree_name`.
+- `worktree_name` — follows the schema `ns-<shift>-<row-value>-<task>-<YYYYMMDDHHMMSS>` (UTC timestamp). Use the SAME timestamp across all items in a single batch for legibility. Different items in the same batch differ by `<row-value>`; retries differ by `<YYYYMMDDHHMMSS>`. Branch name becomes `worktree-<worktree_name>`.
+- `model` — Claude Code model identifier. Omit or set to `null` if the task didn't declare it.
 
 Write the manifest to a temporary file (e.g. `.nightshift/<shift-name>/.batch-manifest.json`), then invoke the helper:
 
@@ -133,11 +197,14 @@ The helper emits a single JSON document to stdout:
       "attempts": 1,
       "recommendations": "...",
       "error": null,
-      "log_path": ".nightshift/<shift>/logs/1-create_page-...jsonl"
+      "log_path": ".nightshift/<shift>/logs/1-create_page-...jsonl",
+      "worktree_preserved": null
     }
   ]
 }
 ```
+
+`worktree_preserved` is non-null when a worktree was created and could not be cleanly removed (subprocess failed, or left uncommitted state). Track these for the completion summary.
 
 This is the same dispatch path for sequential (one-item) and parallel (N-item) modes. There is no separate code path for sequential dispatch.
 
@@ -211,6 +278,14 @@ Suggest archiving with `/nightshift-archive <name>` if all items are done.
 ```
 
 If `permission_mode` was `bypassPermissions` because the auto-mode probe failed, include a one-line note in the summary explaining that the classifier guardrails were not active for this shift.
+
+If any items have `worktree_preserved` set (worktree created and not cleanly removed), append a "Preserved worktrees" subsection listing each path. Users can inspect, then clean up with `(cd <working_dir> && git worktree remove --force .claude/worktrees/<name>)`:
+
+```
+**Preserved worktrees** (left for inspection because dev failed or left uncommitted state):
+  - /path/to/repo-a/.claude/worktrees/ns-my-shift-1-refactor-20260515T120000
+  - /path/to/repo-b/.claude/worktrees/ns-my-shift-2-refactor-20260515T120000
+```
 
 ## CSV Operations
 

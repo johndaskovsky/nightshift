@@ -102,6 +102,10 @@ night-shift/
 
 ## Architecture
 
+### Per-task execution config (3.1.0+)
+
+The task `## Configuration` section supports three optional fields beyond `tools:`: `model:` (which Claude Code model to invoke), `working_dir:` (per-item directory, can reference a `table.csv` column via `{column}` placeholders), and `worktree: true` (run each dev subprocess in a fresh git worktree of the target dir). Enables multi-repo shifts. See README "Multi-repo shifts".
+
 ### Manager subagent + per-item dev subprocesses
 
 - **Manager** (`nightshift-manager` subagent): Sole orchestrator. Reads state, dispatches dev work via `${CLAUDE_SKILL_DIR}/scripts/dispatch-batch.sh` (which spawns `claude -p` subprocesses of the `/nightshift-do-task` skill), writes `manager.md` and task files. Reads `table.csv` for status information but does not write status transitions. Applies step improvements only from successful dev results. Never executes task steps directly. Has no `Agent` tool — cannot delegate to other subagents.

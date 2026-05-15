@@ -135,6 +135,16 @@ READ_ONLY=$(printf '%s' "$MANIFEST" | jq -r '.read_only // false')
 [ -n "$SHIFT_NAME" ] || die "manifest missing required field: shift"
 [ -n "$LOG_DIR" ]    || die "manifest missing required field: log_dir"
 
+# Capture the workspace root before any per-item `cd`. The helper is invoked
+# from the workspace root; per-item working_dir changes are scoped to subshells
+# so this WS variable stays stable across the loop.
+WS=$(pwd)
+
+# LOG_DIR may be relative to WS; make it absolute and create it under WS.
+case "$LOG_DIR" in
+  /*) : ;;            # already absolute
+  *)  LOG_DIR="$WS/$LOG_DIR" ;;
+esac
 mkdir -p "$LOG_DIR"
 
 ITEM_COUNT=$(printf '%s' "$MANIFEST" | jq '.items | length')
@@ -149,40 +159,121 @@ PIDS=()
 LOG_PATHS=()
 ITEM_IDS=()
 TASK_NAMES=()
+WORKING_DIRS=()
+WORKTREE_NAMES=()
+PRE_DISPATCH_ERRORS=()   # populated when an item fails before claude -p spawns
 
 for i in $(seq 0 $((ITEM_COUNT - 1))); do
   ITEM_ID=$(printf '%s' "$MANIFEST" | jq -r ".items[$i].item_id")
   TASK=$(printf '%s' "$MANIFEST" | jq -r ".items[$i].task")
+  WORKING_DIR=$(printf '%s' "$MANIFEST" | jq -r ".items[$i].working_dir // empty")
+  WORKTREE=$(printf '%s' "$MANIFEST" | jq -r ".items[$i].worktree // false")
+  WORKTREE_NAME=$(printf '%s' "$MANIFEST" | jq -r ".items[$i].worktree_name // empty")
+  MODEL=$(printf '%s' "$MANIFEST" | jq -r ".items[$i].model // empty")
   LOG_PATH="${LOG_DIR}/${ITEM_ID}-${TASK}-${TIMESTAMP}.jsonl"
+
+  ITEM_IDS+=("$ITEM_ID")
+  TASK_NAMES+=("$TASK")
+  LOG_PATHS+=("$LOG_PATH")
+  WORKING_DIRS+=("$WORKING_DIR")
+  WORKTREE_NAMES+=("")  # set below only if a worktree was actually requested+spawned
+
+  # Determine subprocess cwd. If working_dir set, validate; otherwise use WS.
+  SUB_CWD="$WS"
+  if [ -n "$WORKING_DIR" ]; then
+    # Normalize relative paths against the workspace root.
+    case "$WORKING_DIR" in
+      /*) SUB_CWD="$WORKING_DIR" ;;
+      *)  SUB_CWD="$WS/$WORKING_DIR" ;;
+    esac
+    if [ ! -d "$SUB_CWD" ]; then
+      # Fail this item without spawning; record an immediate error.
+      PRE_DISPATCH_ERRORS+=("$i:working_dir does not exist: $SUB_CWD")
+      PIDS+=("__skip__")
+      continue
+    fi
+  fi
 
   ARGS="$SHIFT_NAME $TASK $ITEM_ID"
   if [ "$READ_ONLY" = "true" ]; then
     ARGS="$ARGS --read-only"
   fi
 
-  # Spawn in background; redirect stream-json to per-item log.
-  # --permission-mode bypassPermissions is equivalent to --dangerously-skip-permissions
-  # per the Claude Code docs, so we pass it through --permission-mode in both modes.
+  # Build optional flags
+  WT_FLAG=""
+  if [ "$WORKTREE" = "true" ] && [ -n "$WORKTREE_NAME" ]; then
+    WT_FLAG="--worktree $WORKTREE_NAME"
+    WORKTREE_NAMES[$i]="$WORKTREE_NAME"
+  fi
+  MODEL_FLAG=""
+  if [ -n "$MODEL" ]; then
+    MODEL_FLAG="--model $MODEL"
+  fi
+
+  # Spawn in background within a subshell so the per-item `cd` doesn't leak.
+  # NIGHTSHIFT_WORKSPACE_ROOT is exported so the do-task skill can locate
+  # shift artifacts even though its cwd is now a different directory.
   # --verbose is required when pairing -p with --output-format stream-json.
-  claude -p "/nightshift-do-task $ARGS" \
-    --output-format stream-json \
-    --verbose \
-    --permission-mode "$PERMISSION_MODE" \
-    > "$LOG_PATH" 2>&1 &
+  (
+    cd "$SUB_CWD" || exit 91
+    export NIGHTSHIFT_WORKSPACE_ROOT="$WS"
+    # shellcheck disable=SC2086
+    claude -p "/nightshift-do-task $ARGS" \
+      --output-format stream-json \
+      --verbose \
+      --permission-mode "$PERMISSION_MODE" \
+      $WT_FLAG $MODEL_FLAG \
+      > "$LOG_PATH" 2>&1
+  ) &
 
   PIDS+=("$!")
-  LOG_PATHS+=("$LOG_PATH")
-  ITEM_IDS+=("$ITEM_ID")
-  TASK_NAMES+=("$TASK")
 done
 
-# Wait for all and capture exit codes (parallel-safe)
+# Wait for spawned subprocesses; record exit codes (or sentinel for skipped items).
 EXIT_CODES=()
 for pid in "${PIDS[@]}"; do
-  if wait "$pid"; then
+  if [ "$pid" = "__skip__" ]; then
+    EXIT_CODES+=(91)
+  elif wait "$pid"; then
     EXIT_CODES+=(0)
   else
     EXIT_CODES+=($?)
+  fi
+done
+
+# ----------------------------------------------------------------------------
+# Cleanup worktrees (best-effort, no --force)
+# ----------------------------------------------------------------------------
+
+# Worktree cleanup policy:
+#   - clean exit + clean tree → git worktree remove (succeeds)
+#   - clean exit + dirty tree → remove fails; preserve worktree path
+#   - any failure → skip remove entirely; preserve worktree path
+WORKTREE_PRESERVED=()
+for i in $(seq 0 $((ITEM_COUNT - 1))); do
+  WORKTREE_PRESERVED+=("")
+  WT_NAME="${WORKTREE_NAMES[$i]:-}"
+  if [ -z "$WT_NAME" ]; then continue; fi
+
+  SUB_CWD="${WORKING_DIRS[$i]}"
+  case "$SUB_CWD" in
+    /*) : ;;
+    *)  SUB_CWD="$WS/$SUB_CWD" ;;
+  esac
+  WT_PATH="$SUB_CWD/.claude/worktrees/$WT_NAME"
+  EXIT_CODE="${EXIT_CODES[$i]}"
+
+  if [ "$EXIT_CODE" != "0" ]; then
+    # Preserve on failure
+    WORKTREE_PRESERVED[$i]="$WT_PATH"
+    continue
+  fi
+
+  # Attempt clean remove (no --force)
+  if (cd "$SUB_CWD" && git worktree remove ".claude/worktrees/$WT_NAME") >/dev/null 2>&1; then
+    : # removed
+  else
+    WORKTREE_PRESERVED[$i]="$WT_PATH"
   fi
 done
 
@@ -210,7 +301,23 @@ for i in $(seq 0 $((ITEM_COUNT - 1))); do
     done < "$LOG_PATH"
   fi
 
-  if [ -n "$RESULT_LINE" ]; then
+  # Detect pre-dispatch errors (item skipped before claude -p was spawned;
+  # exit code 91 is our sentinel for "subprocess never ran").
+  PRE_ERROR=""
+  if [ "$EXIT_CODE" = "91" ]; then
+    for entry in "${PRE_DISPATCH_ERRORS[@]:-}"; do
+      case "$entry" in
+        "$i:"*) PRE_ERROR="${entry#*:}" ;;
+      esac
+    done
+  fi
+
+  if [ -n "$PRE_ERROR" ]; then
+    STATUS="failed"
+    ATTEMPTS=0
+    RECOMMENDATIONS="None"
+    ERROR=$(printf '%s' "$PRE_ERROR" | jq -Rs '.')
+  elif [ -n "$RESULT_LINE" ]; then
     # Extract a do-task structured payload from the Claude stream-json envelope.
     # The envelope's .result field is a STRING containing the model's final
     # message. The do-task skill emits JSON in that message. We try, in order:
@@ -286,6 +393,13 @@ for i in $(seq 0 $((ITEM_COUNT - 1))); do
     STATUS="failed"
   fi
 
+  WT_PRESERVED="${WORKTREE_PRESERVED[$i]:-}"
+  if [ -n "$WT_PRESERVED" ]; then
+    WT_PRESERVED_JSON=$(printf '%s' "$WT_PRESERVED" | jq -Rs '.')
+  else
+    WT_PRESERVED_JSON="null"
+  fi
+
   RESULTS_JSON=$(printf '%s' "$RESULTS_JSON" | jq \
     --arg item_id "$ITEM_ID" \
     --argjson exit_code "$EXIT_CODE" \
@@ -294,6 +408,7 @@ for i in $(seq 0 $((ITEM_COUNT - 1))); do
     --arg recommendations "$RECOMMENDATIONS" \
     --argjson error "$ERROR" \
     --arg log_path "$LOG_PATH" \
+    --argjson worktree_preserved "$WT_PRESERVED_JSON" \
     '. + [{
       item_id: $item_id,
       exit_code: $exit_code,
@@ -301,7 +416,8 @@ for i in $(seq 0 $((ITEM_COUNT - 1))); do
       attempts: $attempts,
       recommendations: $recommendations,
       error: $error,
-      log_path: $log_path
+      log_path: $log_path,
+      worktree_preserved: $worktree_preserved
     }]')
 done
 
